@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile document",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Memory": {
+      "title": "Memory",
+      "description": "A personal living memory capsule",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "date": { "type": "string" },
+        "monthYear": { "type": "string" },
+        "location": { "type": "string" },
+        "assetCount": { "type": "number" },
+        "videoCount": { "type": "number" },
+        "category": { "type": "string" },
+        "coverGradient": { "type": "string" },
+        "coverImageUrl": { "type": "string" },
+        "tags": { "type": "array" },
+        "aiSummary": { "type": "string" },
+        "mood": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "ownerId", "title"]
+    },
+    "MediaItem": {
+      "title": "MediaItem",
+      "description": "Media item within a memory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memoryId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "filename": { "type": "string" },
+        "type": { "type": "string" },
+        "size": { "type": "string" },
+        "title": { "type": "string" },
+        "time": { "type": "string" },
+        "secure_url": { "type": "string" },
+        "cloudinaryAsset": { "type": "object" },
+        "aiInsight": { "type": "object" }
+      },
+      "required": ["id", "memoryId", "ownerId", "type"]
+    },
+    "Moment": {
+      "title": "Moment",
+      "description": "Story moment within a memory timeline",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memoryId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "time": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "tags": { "type": "array" },
+        "secure_url": { "type": "string" }
+      },
+      "required": ["id", "memoryId", "ownerId", "title"]
+    },
+    "ConversationTurn": {
+      "title": "ConversationTurn",
+      "description": "Ask Your Memory conversation turn",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memoryId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "user": { "type": "string" },
+        "lumora": { "type": "string" },
+        "confidence": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "memoryId", "ownerId", "user", "lumora"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "UserProfile",
+      "description": "Stores user profile data"
+    },
+    "/memories/{memoryId}": {
+      "schema": "Memory",
+      "description": "Stores personal memory capsules"
+    },
+    "/memories/{memoryId}/media/{mediaId}": {
+      "schema": "MediaItem",
+      "description": "Stores media assets for a memory"
+    },
+    "/memories/{memoryId}/moments/{momentId}": {
+      "schema": "Moment",
+      "description": "Stores timeline moments for a memory"
+    },
+    "/memories/{memoryId}/conversations/{conversationId}": {
+      "schema": "ConversationTurn",
+      "description": "Stores conversational recall queries and answers"
+    }
+  }
+}

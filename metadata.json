@@ -1,0 +1,6 @@
+{
+  "name": "Lumora — Every moment, illuminated",
+  "description": "AI-powered media intelligence platform that transforms scattered photos and videos into intelligent, searchable stories.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

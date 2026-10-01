@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+:root {
+  --lumora-primary: #6D5DFB;
+  --lumora-deep: #3B267E;
+  --lumora-lavender: #B8A7FF;
+  --lumora-pink: #F4A7D8;
+  --lumora-blue: #8DDCFF;
+  --lumora-cyan: #69E1D4;
+  --lumora-warm-white: #FFF9FC;
+  --lumora-dark: #171522;
+  --lumora-muted: #665F78;
+  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--lumora-dark);
+  background-color: #EDE6F7;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
+}
+
+/* Glassmorphism and ambient lighting utilities */
+.glass-panel {
+  background: rgba(255, 249, 252, 0.78);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+.glass-card-subtle {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+}
+
+.glass-dark {
+  background: rgba(35, 22, 82, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(184, 167, 255, 0.2);
+}
+
+/* Ambient Slow Light Motion Keyframes (8-22s calm breathing cycles) */
+@keyframes ambient-float-1 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.22;
+  }
+  50% {
+    transform: translate(45px, 25px) scale(1.08);
+    opacity: 0.28;
+  }
+  100% {
+    transform: translate(-30px, 15px) scale(0.96);
+    opacity: 0.2;
+  }
+}
+
+@keyframes ambient-float-2 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.18;
+  }
+  50% {
+    transform: translate(-40px, -30px) scale(1.12);
+    opacity: 0.25;
+  }
+  100% {
+    transform: translate(25px, -15px) scale(0.94);
+    opacity: 0.16;
+  }
+}
+
+@keyframes ambient-float-3 {
+  0% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.15;
+  }
+  50% {
+    transform: translate(30px, -25px) scale(1.06);
+    opacity: 0.22;
+  }
+  100% {
+    transform: translate(-20px, 35px) scale(0.98);
+    opacity: 0.14;
+  }
+}
+
+.animate-ambient-1 {
+  animation: ambient-float-1 16s ease-in-out infinite alternate;
+}
+
+.animate-ambient-2 {
+  animation: ambient-float-2 20s ease-in-out infinite alternate;
+}
+
+.animate-ambient-3 {
+  animation: ambient-float-3 14s ease-in-out infinite alternate;
+}
+
+/* Button Shimmer Sweep Effect */
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.hover-shimmer:hover .shimmer-bar {
+  animation: shimmer-sweep 1.2s ease-in-out infinite;
+}
+
+/* Smooth custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(237, 230, 247, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(109, 93, 251, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(109, 93, 251, 0.45);
+}
