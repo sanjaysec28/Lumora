@@ -24,6 +24,9 @@ interface DashboardViewProps {
   onOpenProfile: () => void;
   memories?: MemoryCollectionItem[];
   onSelectMemory?: (memory: MemoryCollectionItem) => void;
+  isDemoMode?: boolean;
+  onOpenDemoMode?: () => void;
+  onExitDemoMode?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -31,8 +34,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenLogin,
   onOpenSearch,
   onOpenProfile,
-  memories = mockMemoryCollection,
+  memories = [],
   onSelectMemory,
+  isDemoMode = false,
+  onOpenDemoMode,
+  onExitDemoMode,
 }) => {
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,6 +95,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           onOpenLogin={onOpenLogin}
           onOpenSearch={onOpenSearch}
           onOpenProfile={onOpenProfile}
+          isDemoMode={isDemoMode}
+          onToggleDemoMode={isDemoMode ? onExitDemoMode : onOpenDemoMode}
         />
 
         <div className="px-6 sm:px-10 lg:px-16 py-8 sm:py-12">
@@ -106,16 +114,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Stories created from the moments that matter.
               </p>
               <div className="mt-3 flex items-center gap-2">
-                {isFirebaseConfigured() ? (
+                {!isDemoMode ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#6D5DFB]/10 text-[#6D5DFB] border border-[#6D5DFB]/20">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10B981]" />
                     <span>Live Vault Active</span>
-                    <span className="text-[10px] text-[#665F78]">· Firestore Persistent</span>
+                    <span className="text-[10px] text-[#665F78]">· Real Cloudinary + Firestore</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 border border-amber-500/20">
                     <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span>Demo Sandbox Mode</span>
+                    <span>Demo Mode Active</span>
+                    <span className="text-[10px] text-[#665F78]">· Curated Sample Data</span>
                   </span>
                 )}
               </div>
@@ -145,101 +154,138 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          {/* Hackathon Demo Readiness Banner (Module 4) */}
-          <div className="mt-6 mb-8 p-4 rounded-2xl bg-gradient-to-r from-[#EDE6F7] via-white to-[#EDE6F7] border border-[#B8A7FF]/35 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#69E1D4] shadow-[0_0_8px_#69E1D4]" />
-              <div>
-                <span className="text-xs font-bold text-[#171522]">
-                  Hackathon Demo Mode Active:
-                </span>
-                <span className="text-xs text-[#665F78] ml-1.5">
-                  Pre-populated with real Cloudinary assets, timeline moments, and conversational memory intelligence.
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => {
-                  if (onSelectMemory) onSelectMemory(featuredMemory);
-                  onNavigate('/memory/demo');
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#6D5DFB]/10 hover:bg-[#6D5DFB]/20 text-[#6D5DFB] text-xs font-semibold transition-colors cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Launch Interactive Demo</span>
-              </button>
-              <button
-                onClick={() => onNavigate('/create')}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white border border-[#B8A7FF]/40 text-[#3B267E] hover:text-[#6D5DFB] text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Upload Your Media</span>
-              </button>
-            </div>
-          </div>
-
-          {/* FEATURED MEMORY: Large Cinematic Card */}
-          <div className="mt-10 mb-14">
-            <div
-              onClick={() => handleOpenMemory(featuredMemory)}
-              className="group relative rounded-3xl sm:rounded-[32px] overflow-hidden bg-gradient-to-br from-[#271556] via-[#3B267E] to-[#171522] text-white p-7 sm:p-12 shadow-[0_20px_60px_rgba(59,38,126,0.28)] border border-white/20 cursor-pointer transition-all duration-500 hover:shadow-[0_28px_80px_rgba(59,38,126,0.38)] hover:-translate-y-0.5"
-            >
-              {/* Cinematic Background Atmosphere with subtle zoom */}
-              <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-[#3B267E]/40 to-transparent z-10 pointer-events-none" />
-              <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full bg-gradient-to-bl from-[#F4A7D8]/30 via-[#6D5DFB]/30 to-transparent blur-3xl pointer-events-none group-hover:scale-115 transition-transform duration-700" />
-              <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-gradient-to-tr from-[#69E1D4]/25 to-transparent blur-3xl pointer-events-none" />
-
-              {/* Decorative Geometric 3D vector accent */}
-              <div className="absolute right-8 bottom-6 sm:right-16 sm:bottom-10 opacity-20 group-hover:opacity-40 transition-opacity duration-500 pointer-events-none">
-                <svg viewBox="0 0 200 200" className="w-48 h-48 sm:w-64 sm:h-64">
-                  <ellipse cx="100" cy="100" rx="90" ry="40" transform="rotate(-25 100 100)" stroke="white" strokeWidth="2" fill="none" strokeDasharray="4 4" />
-                  <ellipse cx="100" cy="100" rx="60" ry="26" transform="rotate(35 100 100)" stroke="#B8A7FF" strokeWidth="1.5" fill="none" />
-                  <circle cx="100" cy="100" r="18" fill="white" />
-                </svg>
-              </div>
-
-              <div className="relative z-20 max-w-2xl">
-                {/* Featured Badge */}
-                <div className="flex flex-wrap items-center gap-3 text-xs mb-4">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/25 font-bold uppercase tracking-wider text-[#8DDCFF]">
-                    <Sparkles className="w-3.5 h-3.5 text-[#69E1D4]" />
-                    Featured Story Capsule
+          {/* Mode Context Banner */}
+          {isDemoMode ? (
+            <div className="mt-6 mb-8 p-4 rounded-2xl bg-gradient-to-r from-[#EDE6F7] via-white to-[#EDE6F7] border border-[#B8A7FF]/35 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_#F59E0B]" />
+                <div>
+                  <span className="text-xs font-bold text-[#171522]">
+                    Curated Demo Mode:
                   </span>
-                  <span className="flex items-center gap-1 text-white/80">
-                    <MapPin className="w-3.5 h-3.5 text-[#B8A7FF]" />
-                    {featuredMemory.location} · {featuredMemory.monthYear}
+                  <span className="text-xs text-[#665F78] ml-1.5">
+                    Viewing hackathon demo sample data. Switch to Live Vault to work with your real uploaded memories.
                   </span>
                 </div>
-
-                <h2 className="font-display text-3xl sm:text-5xl font-bold tracking-tight text-white group-hover:text-[#FFF9FC] transition-colors">
-                  {featuredMemory.title.toUpperCase()}
-                </h2>
-
-                <p className="mt-3 text-base sm:text-lg text-white/85 leading-relaxed font-normal">
-                  "{featuredMemory.subtitle}"
-                </p>
-
-                {/* Metrics & Hover State */}
-                <div className="mt-6 flex flex-wrap items-center gap-4 sm:gap-6 text-xs sm:text-sm text-white/90">
-                  <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-xs">
-                    <Camera className="w-4 h-4 text-[#F4A7D8]" />
-                    <strong className="text-white">{featuredMemory.assetCount}</strong> moments
-                  </span>
-                  <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-xs">
-                    <Film className="w-4 h-4 text-[#8DDCFF]" />
-                    <strong className="text-white">{featuredMemory.videoCount}</strong> videos
-                  </span>
-                </div>
-
-                {/* CTA Action */}
-                <div className="mt-8 flex items-center gap-2 text-sm font-semibold text-white group-hover:text-[#8DDCFF] transition-colors">
-                  <span>Open Memory</span>
-                  <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
-                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {onExitDemoMode && (
+                  <button
+                    onClick={onExitDemoMode}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#6D5DFB] hover:bg-[#3B267E] text-white text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    <span>Return to Live Vault</span>
+                  </button>
+                )}
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-4 mb-6 flex flex-wrap items-center justify-between gap-3 text-xs text-[#665F78] border-b border-[#3B267E]/5 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>Live Mode: Only your real uploaded media is illuminated.</span>
+              </div>
+              {onOpenDemoMode && (
+                <button
+                  onClick={onOpenDemoMode}
+                  className="inline-flex items-center gap-1.5 font-semibold text-[#6D5DFB] hover:text-[#3B267E] transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Explore Curated Demo Mode</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {memories.length === 0 ? (
+            <div className="py-20 px-6 sm:px-12 text-center max-w-2xl mx-auto rounded-[32px] bg-white/70 backdrop-blur-md border border-[#B8A7FF]/30 shadow-[0_16px_50px_rgba(59,38,126,0.06)] my-12">
+              <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-tr from-[#6D5DFB]/15 via-[#8576FF]/20 to-[#F4A7D8]/20 flex items-center justify-center text-[#6D5DFB]">
+                <Sparkles className="w-8 h-8" />
+              </div>
+              <h2 className="font-display text-3xl font-bold text-[#171522]">
+                Your memory is waiting to be illuminated.
+              </h2>
+              <p className="mt-3 text-base text-[#665F78] max-w-md mx-auto font-normal">
+                Upload your photos and videos to construct your first living, intelligent memory capsule.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  onClick={() => onNavigate('/create')}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-[#6D5DFB] to-[#3B267E] shadow-md hover:shadow-lg hover:scale-[1.02] transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Memory</span>
+                </button>
+                {onOpenDemoMode && (
+                  <button
+                    onClick={onOpenDemoMode}
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold text-[#6D5DFB] bg-[#6D5DFB]/10 hover:bg-[#6D5DFB]/20 transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Explore Demo Mode</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* FEATURED MEMORY: Large Cinematic Card */}
+              {featuredMemory && (
+                <div className="mt-10 mb-14">
+                  <div
+                    onClick={() => handleOpenMemory(featuredMemory)}
+                    className="group relative rounded-3xl sm:rounded-[32px] overflow-hidden bg-gradient-to-br from-[#271556] via-[#3B267E] to-[#171522] text-white p-7 sm:p-12 shadow-[0_20px_60px_rgba(59,38,126,0.28)] border border-white/20 cursor-pointer transition-all duration-500 hover:shadow-[0_28px_80px_rgba(59,38,126,0.38)] hover:-translate-y-0.5"
+                  >
+                    {featuredMemory.coverImageUrl && (
+                      <img
+                        src={getOptimizedImageUrl(featuredMemory.coverImageUrl, { width: 1400, height: 800, crop: 'fill' })}
+                        alt={featuredMemory.title}
+                        className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-70 transition-opacity duration-700"
+                      />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-[#3B267E]/40 to-transparent z-10 pointer-events-none" />
+                    <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full bg-gradient-to-bl from-[#F4A7D8]/30 via-[#6D5DFB]/30 to-transparent blur-3xl pointer-events-none group-hover:scale-115 transition-transform duration-700" />
+                    <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-gradient-to-tr from-[#69E1D4]/25 to-transparent blur-3xl pointer-events-none" />
+
+                    <div className="relative z-20 max-w-2xl">
+                      <div className="flex flex-wrap items-center gap-3 text-xs mb-4">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/25 font-bold uppercase tracking-wider text-[#8DDCFF]">
+                          <Sparkles className="w-3.5 h-3.5 text-[#69E1D4]" />
+                          Featured Story Capsule
+                        </span>
+                        <span className="flex items-center gap-1 text-white/80">
+                          <MapPin className="w-3.5 h-3.5 text-[#B8A7FF]" />
+                          {featuredMemory.location} · {featuredMemory.monthYear}
+                        </span>
+                      </div>
+
+                      <h2 className="font-display text-3xl sm:text-5xl font-bold tracking-tight text-white group-hover:text-[#FFF9FC] transition-colors">
+                        {featuredMemory.title.toUpperCase()}
+                      </h2>
+
+                      <p className="mt-3 text-base sm:text-lg text-white/85 leading-relaxed font-normal">
+                        "{featuredMemory.subtitle}"
+                      </p>
+
+                      <div className="mt-6 flex flex-wrap items-center gap-4 sm:gap-6 text-xs sm:text-sm text-white/90">
+                        <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-xs">
+                          <Camera className="w-4 h-4 text-[#F4A7D8]" />
+                          <strong className="text-white">{featuredMemory.assetCount}</strong> moments
+                        </span>
+                        <span className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-full backdrop-blur-xs">
+                          <Film className="w-4 h-4 text-[#8DDCFF]" />
+                          <strong className="text-white">{featuredMemory.videoCount}</strong> videos
+                        </span>
+                      </div>
+
+                      <div className="mt-8 flex items-center gap-2 text-sm font-semibold text-white group-hover:text-[#8DDCFF] transition-colors">
+                        <span>Open Memory</span>
+                        <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
           {/* Section: "Your memories" + Filter Bar */}
           <div className="mb-8">
@@ -290,9 +336,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           alt={mem.title}
                           className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity"
                         />
-                      ) : (
+                      ) : isDemoMode ? (
                         <div className={`absolute inset-0 bg-gradient-to-tr ${mem.coverGradient}`} />
-                      )}
+                      ) : null}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/30 pointer-events-none" />
 
                       <div className="relative z-10 flex items-center justify-between text-[11px] font-mono">
@@ -300,7 +346,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           {mem.category}
                         </span>
                         <span className="bg-white/20 backdrop-blur-md px-2.5 py-0.5 rounded-full font-sans text-[11px] font-semibold">
-                          {mem.assetCount} assets
+                          {mem.assetCount} media · {mem.timelineMoments?.length || (mem.clusters?.length ? mem.clusters.reduce((s, c) => s + c.momentIds.length, 0) : 3)} moments
                         </span>
                       </div>
 
@@ -323,9 +369,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </span>
                     </div>
 
+                    <div className="text-xs font-mono font-medium text-[#6D5DFB] mb-1.5">
+                      {mem.assetCount} media · {mem.timelineMoments?.length || (mem.clusters?.length ? mem.clusters.reduce((s, c) => s + c.momentIds.length, 0) : 3)} moments
+                    </div>
+
                     <p className="text-xs text-[#665F78] leading-relaxed line-clamp-2">
                       {mem.subtitle}
                     </p>
+
+                    {/* Surfaced Clusters in Card */}
+                    {mem.clusters && mem.clusters.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-[#EDE6F7] space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-semibold tracking-wider uppercase text-[#6D5DFB]">
+                          <span>Story Clusters</span>
+                          <span>{mem.clusters.length} segments</span>
+                        </div>
+                        <div className="space-y-1">
+                          {mem.clusters.slice(0, 3).map((cl) => (
+                            <div key={cl.id} className="flex items-center justify-between text-xs text-[#3B267E]">
+                              <span className="font-medium truncate max-w-[140px] sm:max-w-[160px]">{cl.title}</span>
+                              <span className="font-mono text-[11px] text-[#665F78] shrink-0 ml-2">
+                                {cl.mediaIds.length} media · {cl.momentIds.length} moments
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {mem.tags.slice(0, 3).map((tag) => (
@@ -367,7 +437,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             )}
           </div>
-        </div>
+        </>
+      )}
+    </div>
 
         <Footer onNavigate={onNavigate} />
       </main>

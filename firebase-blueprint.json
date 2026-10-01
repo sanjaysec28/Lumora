@@ -87,6 +87,27 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "memoryId", "ownerId", "user", "lumora"]
+    },
+    "MemoryCluster": {
+      "title": "MemoryCluster",
+      "description": "Segmented memory cluster with title and media references",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "memoryId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "narrativeSummary": { "type": "string" },
+        "mediaIds": { "type": "array" },
+        "momentIds": { "type": "array" },
+        "dominantTags": { "type": "array" },
+        "dominantActivities": { "type": "array" },
+        "confidence": { "type": "string" },
+        "coverImageUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "ownerId", "title"]
     }
   },
   "firestore": {
@@ -106,9 +127,17 @@
       "schema": "Moment",
       "description": "Stores timeline moments for a memory"
     },
+    "/memories/{memoryId}/clusters/{clusterId}": {
+      "schema": "MemoryCluster",
+      "description": "Stores memory clusters for a memory capsule"
+    },
     "/memories/{memoryId}/conversations/{conversationId}": {
       "schema": "ConversationTurn",
       "description": "Stores conversational recall queries and answers"
+    },
+    "/clusters/{clusterId}": {
+      "schema": "MemoryCluster",
+      "description": "Stores standalone memory clusters"
     }
   }
 }

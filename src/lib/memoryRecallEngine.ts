@@ -46,26 +46,26 @@ export function analyzeQueryIntent(query: string): QueryIntent {
   let timeOfDay: QueryIntent['timeOfDay'] = undefined;
 
   // Temporal detection: "before X", "prior to X", "leading up to X"
-  const beforeMatch = clean.match(/(?:before|prior to|leading up to|ahead of)\s+(?:the\s+)?([a-z0-9_-]+)/i);
+  const beforeMatch = clean.match(/(?:before|prior to|leading up to|ahead of)\s+(?:the\s+|our\s+|my\s+|a\s+|an\s+)?([a-z0-9_-]+(?:\s+[a-z0-9_-]+)?)/i);
   if (beforeMatch) {
     temporalDirection = 'before';
-    temporalAnchor = beforeMatch[1];
+    temporalAnchor = beforeMatch[1].trim();
     intentType = 'temporal';
   }
 
   // Temporal detection: "after X", "following X", "after we X"
-  const afterMatch = clean.match(/(?:after|following|subsequent to|post)\s+(?:the\s+|we\s+)?([a-z0-9_-]+)/i);
+  const afterMatch = clean.match(/(?:after|following|subsequent to|post)\s+(?:the\s+|our\s+|my\s+|we\s+|a\s+|an\s+)?([a-z0-9_-]+(?:\s+[a-z0-9_-]+)?)/i);
   if (afterMatch) {
     temporalDirection = 'after';
-    temporalAnchor = afterMatch[1];
+    temporalAnchor = afterMatch[1].trim();
     intentType = 'temporal';
   }
 
   // Temporal detection: "during X", "around X"
-  const aroundMatch = clean.match(/(?:around|during|throughout|in the middle of)\s+(?:the\s+)?([a-z0-9_-]+)/i);
+  const aroundMatch = clean.match(/(?:around|during|throughout|in the middle of)\s+(?:the\s+|our\s+|my\s+|a\s+|an\s+)?([a-z0-9_-]+(?:\s+[a-z0-9_-]+)?)/i);
   if (aroundMatch && !temporalDirection) {
     temporalDirection = 'during';
-    temporalAnchor = aroundMatch[1];
+    temporalAnchor = aroundMatch[1].trim();
     intentType = 'temporal';
   }
 
@@ -389,8 +389,16 @@ export function retrieveRelevantMoments(
     );
   }
 
+  // Deduplicate topCandidates by id
+  const seenIds = new Set<string>();
+  topCandidates = topCandidates.filter((m) => {
+    if (seenIds.has(m.id)) return false;
+    seenIds.add(m.id);
+    return true;
+  });
+
   // Extract candidate media IDs
-  const candidateMediaIds: string[] = topCandidates.map((m) => m.id);
+  const candidateMediaIds: string[] = Array.from(new Set(topCandidates.map((m) => m.id)));
 
   // Deduce suggested graph nodes from the top candidates' tags & moment types
   const nodeTagMap: Record<string, string> = {
@@ -439,11 +447,80 @@ export async function executeConversationalRecall(
   memory: MemoryCollectionItem
 ): Promise<MemoryAnswer> {
   const moments = memory.timelineMoments || [];
+  const intent = analyzeQueryIntent(query);
 
-  // Step 1: Deterministic Local Retrieval
-  const { intent, topCandidates, candidateMediaIds, suggestedGraphNodes } = retrieveRelevantMoments(
+  // Step 0: Cluster-first Retrieval (Module 2 Step 11: retrieve from cluster before generating answer)
+  let activeClusterTitle: string | undefined = undefined;
+  let clusterFilteredMoments: TimelineMoment[] = moments;
+
+  if (memory.clusters && memory.clusters.length > 0) {
+    const qLower = query.toLowerCase();
+    const clusters = memory.clusters;
+
+    // Check for temporal query relative to a cluster (e.g. "What happened before our final presentation?")
+    let targetClusterIndex = -1;
+    for (let i = 0; i < clusters.length; i++) {
+      const c = clusters[i];
+      const titleLower = c.title.toLowerCase();
+      if (
+        qLower.includes(titleLower) ||
+        (intent.temporalAnchor && (titleLower.includes(intent.temporalAnchor.toLowerCase()) || intent.temporalAnchor.toLowerCase().includes(titleLower.split(' ')[0])))
+      ) {
+        targetClusterIndex = i;
+        break;
+      }
+    }
+
+    if (targetClusterIndex !== -1) {
+      if (intent.temporalDirection === 'before') {
+        // Retrieve the related previous cluster
+        const prevCluster = targetClusterIndex > 0
+          ? clusters[targetClusterIndex - 1]
+          : clusters[targetClusterIndex];
+        activeClusterTitle = prevCluster.title;
+        const matched = moments.filter(
+          (m) => prevCluster.momentIds?.includes(m.id) || prevCluster.mediaIds?.includes(m.id)
+        );
+        if (matched.length > 0) clusterFilteredMoments = matched;
+      } else if (intent.temporalDirection === 'after') {
+        // Retrieve the related subsequent cluster
+        const nextCluster = targetClusterIndex < clusters.length - 1
+          ? clusters[targetClusterIndex + 1]
+          : clusters[targetClusterIndex];
+        activeClusterTitle = nextCluster.title;
+        const matched = moments.filter(
+          (m) => nextCluster.momentIds?.includes(m.id) || nextCluster.mediaIds?.includes(m.id)
+        );
+        if (matched.length > 0) clusterFilteredMoments = matched;
+      } else {
+        // Direct inquiry into this cluster (e.g. "Show me the moments from our hackathon")
+        const targetCluster = clusters[targetClusterIndex];
+        activeClusterTitle = targetCluster.title;
+        const matched = moments.filter(
+          (m) => targetCluster.momentIds?.includes(m.id) || targetCluster.mediaIds?.includes(m.id)
+        );
+        if (matched.length > 0) clusterFilteredMoments = matched;
+      }
+    } else {
+      // Find cluster matching keywords or dominant tags
+      const bestCluster = clusters.find((c) => {
+        const text = `${c.title} ${c.dominantActivities?.join(' ') || ''} ${c.dominantTags?.join(' ') || ''}`.toLowerCase();
+        return intent.keywords.some((k) => text.includes(k));
+      });
+      if (bestCluster) {
+        activeClusterTitle = bestCluster.title;
+        const matched = moments.filter(
+          (m) => bestCluster.momentIds?.includes(m.id) || bestCluster.mediaIds?.includes(m.id)
+        );
+        if (matched.length > 0) clusterFilteredMoments = matched;
+      }
+    }
+  }
+
+  // Step 1: Deterministic Local Retrieval from candidate cluster moments
+  const { topCandidates, candidateMediaIds, suggestedGraphNodes } = retrieveRelevantMoments(
     query,
-    moments,
+    clusterFilteredMoments,
     { maxCandidates: 5 }
   );
 
@@ -452,6 +529,7 @@ export async function executeConversationalRecall(
     const payload = {
       query,
       memoryTitle: memory.title,
+      clusterTitle: activeClusterTitle,
       candidateMoments: topCandidates.map((m) => ({
         id: m.id,
         time: m.time,
@@ -486,7 +564,9 @@ export async function executeConversationalRecall(
           followUps: serverAnswer.followUps?.length ? serverAnswer.followUps : generateContextualFollowUps(intent, topCandidates),
           relevantGraphNodes: serverAnswer.relevantGraphNodes || suggestedGraphNodes,
           temporalAnchor: intent.temporalAnchor,
-          evidenceSummary: `Verified against ${topCandidates.length} analyzed moments in "${memory.title}"`,
+          evidenceSummary: activeClusterTitle
+            ? `Verified against ${topCandidates.length} analyzed moments from "${activeClusterTitle}"`
+            : `Verified against ${topCandidates.length} analyzed moments in "${memory.title}"`,
         };
       }
     }
@@ -495,7 +575,7 @@ export async function executeConversationalRecall(
   }
 
   // Step 3: Grounded Client Fallback (Ensures zero downtime, 100% test pass)
-  return synthesizeGroundedClientAnswer(query, intent, topCandidates, memory, candidateMediaIds, suggestedGraphNodes);
+  return synthesizeGroundedClientAnswer(query, intent, topCandidates, memory, candidateMediaIds, suggestedGraphNodes, activeClusterTitle);
 }
 
 /**
@@ -507,7 +587,8 @@ function synthesizeGroundedClientAnswer(
   candidates: TimelineMoment[],
   memory: MemoryCollectionItem,
   candidateMediaIds: string[],
-  graphNodes: string[]
+  graphNodes: string[],
+  activeClusterTitle?: string
 ): MemoryAnswer {
   if (candidates.length === 0) {
     return {
@@ -534,10 +615,14 @@ function synthesizeGroundedClientAnswer(
 
   if (intent.temporalDirection === 'before') {
     const anchor = intent.temporalAnchor || 'the presentation';
-    answerText = `Before ${anchor}, your memory shows an intensive stretch of collaborative work and prototyping: ${titles}. Lumora identified ${candidates.length} related moments ${timeSpan} leading up to that milestone.`;
+    const clusterRef = activeClusterTitle ? `the "${activeClusterTitle}" cluster with ` : '';
+    answerText = `Before ${anchor}, your memory shows ${clusterRef}an intensive stretch of collaborative work and prototyping: ${titles}. Lumora identified ${candidates.length} related moments ${timeSpan} leading up to that milestone.`;
   } else if (intent.temporalDirection === 'after') {
     const anchor = intent.temporalAnchor || 'arrival';
-    answerText = `Following ${anchor}, your memory records ${candidates.length} key moments: ${titles}. These capture the progression of the sprint ${timeSpan}.`;
+    const clusterRef = activeClusterTitle ? `the "${activeClusterTitle}" cluster containing ` : '';
+    answerText = `Following ${anchor}, your memory records ${clusterRef}${candidates.length} key moments: ${titles}. These capture the progression of the sprint ${timeSpan}.`;
+  } else if (activeClusterTitle) {
+    answerText = `In the "${activeClusterTitle}" cluster of "${memory.title}", Lumora retrieved ${candidates.length} moments: ${titles}. These took place ${timeSpan}.`;
   } else if (intent.timeOfDay === 'afternoon') {
     answerText = `During the afternoon (${timeSpan}), your memory records ${candidates.length} focused moments: ${titles}. Visual analysis highlights active engineering and team coordination.`;
   } else if (intent.timeOfDay === 'morning') {
@@ -562,7 +647,9 @@ function synthesizeGroundedClientAnswer(
     followUps: generateContextualFollowUps(intent, candidates),
     relevantGraphNodes: graphNodes,
     temporalAnchor: intent.temporalAnchor,
-    evidenceSummary: `Grounded in ${candidates.length} analyzed moments (${timeSpan})`,
+    evidenceSummary: activeClusterTitle
+      ? `Grounded in ${candidates.length} analyzed moments from "${activeClusterTitle}" (${timeSpan})`
+      : `Grounded in ${candidates.length} analyzed moments (${timeSpan})`,
   };
 }
 

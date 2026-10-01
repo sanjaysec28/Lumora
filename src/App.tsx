@@ -31,13 +31,27 @@ export default function App() {
   // Authenticated user state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Global memory collections state
-  const [memories, setMemories] = useState<MemoryCollectionItem[]>(mockMemoryCollection);
-  const [activeMemory, setActiveMemory] = useState<MemoryCollectionItem>(mockMemoryCollection[0]);
+  // Separation of modes:
+  // LIVE MODE = real Cloudinary + Firebase user data ONLY (starts empty until uploaded/loaded)
+  // DEMO MODE = curated sample data ONLY
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+
+  // Live Mode State
+  const [liveMemories, setLiveMemories] = useState<MemoryCollectionItem[]>([]);
+  const [activeLiveMemory, setActiveLiveMemory] = useState<MemoryCollectionItem | null>(null);
+
+  // Demo Mode State
+  const [demoMemories] = useState<MemoryCollectionItem[]>(mockMemoryCollection);
+  const [activeDemoMemory, setActiveDemoMemory] = useState<MemoryCollectionItem>(mockMemoryCollection[0]);
+
+  // Active collection and item based on mode
+  const currentMemories = isDemoMode ? demoMemories : liveMemories;
+  const activeMemory = isDemoMode ? activeDemoMemory : activeLiveMemory;
 
   const handleSaveNewMemory = (newMemory: MemoryCollectionItem) => {
-    setMemories((prev) => [newMemory, ...prev]);
-    setActiveMemory(newMemory);
+    setLiveMemories((prev) => [newMemory, ...prev]);
+    setActiveLiveMemory(newMemory);
+    setIsDemoMode(false); // User just created a real memory, ensure they are in Live Mode
   };
 
   // Subscribe to real Firebase authentication and load user's Firestore memories
@@ -48,9 +62,11 @@ export default function App() {
       if (isFirebaseConfigured()) {
         try {
           const userMemories = await loadUserMemoriesFromFirestore(ownerId);
-          if (userMemories && userMemories.length > 0) {
-            setMemories(userMemories);
-            setActiveMemory(userMemories[0]);
+          if (userMemories) {
+            setLiveMemories(userMemories);
+            if (userMemories.length > 0) {
+              setActiveLiveMemory((prev) => prev || userMemories[0]);
+            }
           }
         } catch (err) {
           console.warn('[Lumora] Error loading user memories from Firestore:', err);
@@ -123,6 +139,8 @@ export default function App() {
           onOpenLogin={() => setIsLoginOpen(true)}
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenProfile={() => setIsProfileOpen(true)}
+          isDemoMode={isDemoMode}
+          onToggleDemoMode={() => setIsDemoMode((prev) => !prev)}
         />
       )}
 
@@ -132,9 +150,20 @@ export default function App() {
           onOpenLogin={() => setIsLoginOpen(true)}
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenProfile={() => setIsProfileOpen(true)}
-          memories={memories}
+          memories={currentMemories}
+          isDemoMode={isDemoMode}
+          onOpenDemoMode={() => {
+            setIsDemoMode(true);
+          }}
+          onExitDemoMode={() => {
+            setIsDemoMode(false);
+          }}
           onSelectMemory={(mem) => {
-            setActiveMemory(mem);
+            if (isDemoMode) {
+              setActiveDemoMemory(mem);
+            } else {
+              setActiveLiveMemory(mem);
+            }
             handleNavigate('/memory/demo');
           }}
         />
@@ -148,6 +177,8 @@ export default function App() {
           onOpenProfile={() => setIsProfileOpen(true)}
           onSaveNewMemory={handleSaveNewMemory}
           currentUser={currentUser}
+          isDemoMode={isDemoMode}
+          onToggleDemoMode={() => setIsDemoMode((prev) => !prev)}
         />
       )}
 
@@ -158,9 +189,18 @@ export default function App() {
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenProfile={() => setIsProfileOpen(true)}
           memory={activeMemory}
-          onSelectMemory={(mem) => setActiveMemory(mem)}
-          availableMemories={memories}
+          onSelectMemory={(mem) => {
+            if (isDemoMode) {
+              setActiveDemoMemory(mem);
+            } else {
+              setActiveLiveMemory(mem);
+            }
+          }}
+          availableMemories={currentMemories}
           currentUser={currentUser}
+          isDemoMode={isDemoMode}
+          onOpenDemoMode={() => setIsDemoMode(true)}
+          onExitDemoMode={() => setIsDemoMode(false)}
         />
       )}
 
@@ -168,6 +208,8 @@ export default function App() {
       <SearchModal
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
+        memories={currentMemories}
+        isDemoMode={isDemoMode}
         onSelectMedia={(mediaItem) => {
           setActiveMediaDetail(mediaItem);
         }}
@@ -194,8 +236,36 @@ export default function App() {
         item={activeMediaDetail}
         onClose={() => setActiveMediaDetail(null)}
         onSelectRelatedMoment={(title) => {
-          const found = Object.values(mockMediaDetails).find((m) => m.title === title);
-          if (found) setActiveMediaDetail(found);
+          if (isDemoMode) {
+            const found = Object.values(mockMediaDetails).find((m) => m.title === title);
+            if (found) setActiveMediaDetail(found);
+          } else {
+            // In Live Mode: strictly find real moment with verified secure_url
+            const foundMoment = currentMemories
+              .flatMap((m) => m.timelineMoments || [])
+              .find((t) => t.title === title);
+            if (foundMoment && foundMoment.secure_url) {
+              setActiveMediaDetail({
+                id: foundMoment.id,
+                filename: `${foundMoment.title.toLowerCase().replace(/\s+/g, '_')}.${foundMoment.mediaType === 'video' ? 'mp4' : 'jpg'}`,
+                type: foundMoment.mediaType,
+                size: '4.2 MB',
+                title: foundMoment.title,
+                time: foundMoment.time,
+                context: foundMoment.context || foundMoment.description,
+                tags: foundMoment.tags,
+                relatedMoments: foundMoment.relatedMomentIds || [],
+                coverGradient: foundMoment.coverGradient,
+                secure_url: foundMoment.secure_url,
+                cloudinaryAsset: foundMoment.cloudinaryAsset,
+                scene: foundMoment.scene,
+                activity: foundMoment.activity,
+                objects: foundMoment.objects,
+                momentType: foundMoment.momentType,
+                aiInsight: foundMoment.aiInsight,
+              });
+            }
+          }
         }}
         onViewInTimeline={() => {
           handleNavigate('/memory/demo');

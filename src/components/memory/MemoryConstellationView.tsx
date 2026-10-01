@@ -120,20 +120,18 @@ export const MemoryConstellationView: React.FC<MemoryConstellationViewProps> = (
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {relatedMedia.slice(0, 4).map((item) => (
+            {relatedMedia.filter((i) => Boolean(i.secure_url)).slice(0, 4).map((item) => (
               <div
                 key={item.id}
                 onClick={() => onSelectMedia(item)}
                 className="group relative rounded-2xl overflow-hidden bg-black aspect-[4/3] cursor-pointer shadow-sm hover:shadow-xl transition-all duration-300 hover:scale-[1.02]"
               >
-                {item.secure_url ? (
+                {item.secure_url && (
                   <img
                     src={getOptimizedImageUrl(item.secure_url, { width: 500, height: 380, crop: 'fill' })}
                     alt={item.title}
                     className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
                   />
-                ) : (
-                  <div className={`w-full h-full bg-gradient-to-tr ${item.coverGradient}`} />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
 

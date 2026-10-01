@@ -1,13 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import { mockTimelineMoments, mockMediaDetails, mockMemoryCollection } from '../lib/mockData';
-import { MediaDetailItem, Route } from '../types';
+import { mockMediaDetails } from '../lib/mockData';
+import { MediaDetailItem, MemoryCollectionItem, Route } from '../types';
 import { Search, X, Film, Camera, ArrowRight, Sparkles, FolderHeart } from 'lucide-react';
+import { getOptimizedImageUrl } from '../lib/cloudinary';
 
 interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectMedia: (item: MediaDetailItem) => void;
   onNavigate: (route: Route) => void;
+  memories?: MemoryCollectionItem[];
+  isDemoMode?: boolean;
 }
 
 export const SearchModal: React.FC<SearchModalProps> = ({
@@ -15,13 +18,74 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   onClose,
   onSelectMedia,
   onNavigate,
+  memories = [],
+  isDemoMode = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTypeFilter, setActiveTypeFilter] = useState<'All' | 'Photos' | 'Videos' | 'Moments'>('All');
 
-  const allItems = useMemo(() => {
-    return Object.values(mockMediaDetails);
-  }, []);
+  const allItems = useMemo<MediaDetailItem[]>(() => {
+    if (isDemoMode) {
+      return Object.values(mockMediaDetails);
+    }
+
+    // In Live Mode: strictly extract only real media with a verified secure_url
+    const items: MediaDetailItem[] = [];
+    memories.forEach((mem) => {
+      if (mem.mediaItems && mem.mediaItems.length > 0) {
+        mem.mediaItems.forEach((m) => {
+          const url = m.secure_url || m.cloudinaryAsset?.secure_url;
+          if (url) {
+            items.push({
+              id: m.id,
+              filename: m.filename,
+              type: m.type,
+              size: m.size || '4.0 MB',
+              title: m.title,
+              time: m.time || mem.date,
+              context: m.aiInsight?.context || m.title,
+              tags: m.aiInsight?.tags || ['Live Vault'],
+              relatedMoments: [],
+              coverGradient: m.gradient || 'from-[#6D5DFB] to-[#F4A7D8]',
+              secure_url: url,
+              cloudinaryAsset: m.cloudinaryAsset,
+              scene: m.aiInsight?.scene,
+              activity: m.aiInsight?.activity,
+              objects: m.aiInsight?.objects,
+              momentType: m.aiInsight?.momentType,
+              aiInsight: m.aiInsight,
+            });
+          }
+        });
+      } else if (mem.timelineMoments && mem.timelineMoments.length > 0) {
+        mem.timelineMoments.forEach((t) => {
+          if (t.secure_url) {
+            items.push({
+              id: t.id,
+              filename: `${t.title.toLowerCase().replace(/\s+/g, '_')}.${t.mediaType === 'video' ? 'mp4' : 'jpg'}`,
+              type: t.mediaType,
+              size: '4.2 MB',
+              title: t.title,
+              time: t.time,
+              context: t.context || t.description,
+              tags: t.tags || ['Live Vault'],
+              relatedMoments: t.relatedMomentIds || [],
+              coverGradient: t.coverGradient,
+              secure_url: t.secure_url,
+              cloudinaryAsset: t.cloudinaryAsset,
+              scene: t.scene,
+              activity: t.activity,
+              objects: t.objects,
+              momentType: t.momentType,
+              aiInsight: t.aiInsight,
+            });
+          }
+        });
+      }
+    });
+
+    return items;
+  }, [isDemoMode, memories]);
 
   const filteredItems = useMemo(() => {
     let result = allItems;
@@ -125,13 +189,24 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               >
                 <div className="flex items-center gap-3.5 min-w-0">
                   <div
-                    className={`w-12 h-12 rounded-xl bg-gradient-to-tr ${item.coverGradient} shrink-0 flex items-center justify-center text-white shadow-2xs`}
+                    className="w-12 h-12 rounded-xl bg-black overflow-hidden shrink-0 flex items-center justify-center text-white shadow-2xs relative"
                   >
-                    {item.type === 'video' ? (
-                      <Film className="w-5 h-5 text-white" />
-                    ) : (
-                      <Camera className="w-5 h-5 text-white" />
-                    )}
+                    {item.secure_url ? (
+                      <img
+                        src={getOptimizedImageUrl(item.secure_url, { width: 100, height: 100, crop: 'fill' })}
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : isDemoMode ? (
+                      <div className={`w-full h-full bg-gradient-to-tr ${item.coverGradient}`} />
+                    ) : null}
+                    <div className="absolute inset-0 bg-black/25 flex items-center justify-center pointer-events-none">
+                      {item.type === 'video' ? (
+                        <Film className="w-4 h-4 text-white drop-shadow" />
+                      ) : (
+                        <Camera className="w-4 h-4 text-white drop-shadow" />
+                      )}
+                    </div>
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">

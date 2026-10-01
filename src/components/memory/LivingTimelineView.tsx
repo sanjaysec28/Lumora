@@ -86,9 +86,9 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
                     alt={featuredMoment.title}
                     className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                   />
-                ) : (
+                ) : memory?.isDemo ? (
                   <div className={`w-full h-full bg-gradient-to-tr ${featuredMoment.coverGradient}`} />
-                )}
+                ) : null}
 
                 {/* Soft Cinematic Vignette */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/30 pointer-events-none" />
@@ -153,6 +153,31 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
         </div>
       </div>
 
+      {/* Cluster Flow Breadcrumb Progression (when clusters exist) */}
+      {memory?.clusters && memory.clusters.length > 0 && (
+        <div className="p-5 sm:p-6 rounded-3xl bg-white/70 border border-[#B8A7FF]/30 backdrop-blur-md shadow-2xs">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[#6D5DFB] mb-3 flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Memory Story Chapters ({memory.clusters.length} clusters)</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5 text-xs sm:text-sm font-bold text-[#171522]">
+            {memory.clusters.map((cl, idx) => (
+              <React.Fragment key={cl.id}>
+                <span className="px-3 py-1.5 rounded-xl bg-white border border-[#B8A7FF]/40 text-[#3B267E] shadow-2xs flex items-center gap-1.5">
+                  <span>{cl.title.toUpperCase()}</span>
+                  <span className="font-mono text-[10px] text-[#665F78] font-normal">
+                    ({cl.mediaIds.length} media)
+                  </span>
+                </span>
+                {idx < memory.clusters!.length - 1 && (
+                  <span className="text-[#6D5DFB] font-bold text-base">↓</span>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ================================================== */}
       {/* VERTICAL EDITORIAL JOURNEY (VARIED COMPOSITIONS) */}
       {/* ================================================== */}
@@ -166,8 +191,21 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
           // 4: Video-Focused Reel
           const rhythm = index % 5;
 
+          // Associated cluster if available
+          const parentCluster = memory?.clusters?.find(
+            (c) => c.momentIds?.includes(moment.id) || c.mediaIds?.includes(moment.id)
+          );
+
+          // Check if this moment is the first in its cluster to display a meaningful section header
+          const isFirstInCluster = parentCluster && (
+            index === 0 ||
+            !memory?.clusters?.find((c) => c.momentIds?.includes(moments[index - 1]?.id)) ||
+            memory?.clusters?.find((c) => c.momentIds?.includes(moments[index - 1]?.id))?.id !== parentCluster.id
+          );
+
           // Moment label floating tag
           const momentLabel =
+            parentCluster?.title?.toUpperCase() ||
             moment.momentType?.toUpperCase() ||
             (index === 0
               ? 'ARRIVAL & DAWN'
@@ -180,11 +218,29 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
               : 'VICTORY CELEBRATION');
 
           return (
-            <article
-              key={moment.id}
-              onClick={() => onSelectMoment(moment)}
-              className="relative group cursor-pointer"
-            >
+            <div key={moment.id} className="space-y-6">
+              {/* Cluster Section Header */}
+              {isFirstInCluster && parentCluster && (
+                <div className="relative -ml-3 sm:-ml-5 pb-2 pt-2">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-[#3B267E] to-[#6D5DFB] text-white shadow-md text-xs sm:text-sm font-bold uppercase tracking-wider">
+                    <span>{parentCluster.title.toUpperCase()}</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#69E1D4]" />
+                    <span className="text-[11px] font-mono font-normal text-white/80">
+                      {parentCluster.mediaIds.length} media · {parentCluster.momentIds.length} moments
+                    </span>
+                  </div>
+                  {parentCluster.narrativeSummary && (
+                    <p className="mt-2 text-xs sm:text-sm text-[#665F78] max-w-xl font-normal leading-relaxed pl-1">
+                      {parentCluster.narrativeSummary}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <article
+                onClick={() => onSelectMoment(moment)}
+                className="relative group cursor-pointer"
+              >
               {/* Timeline Illuminating Node Dot */}
               <div className="absolute -left-[30px] sm:-left-[38px] top-6 w-5 h-5 rounded-full bg-[#FFF9FC] border-[3.5px] border-[#6D5DFB] shadow-[0_0_12px_rgba(109,93,251,0.5)] group-hover:scale-130 group-hover:border-[#3B267E] group-hover:shadow-[0_0_18px_#69E1D4] transition-all duration-300 z-10" />
 
@@ -201,9 +257,9 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
                           alt={moment.title}
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                         />
-                      ) : (
+                      ) : memory?.isDemo ? (
                         <div className={`w-full h-full bg-gradient-to-tr ${moment.coverGradient}`} />
-                      )}
+                      ) : null}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent pointer-events-none" />
 
                       {/* Floating Moment Label directly on media */}
@@ -284,9 +340,9 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
                           alt={moment.title}
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                         />
-                      ) : (
+                      ) : memory?.isDemo ? (
                         <div className={`w-full h-full bg-gradient-to-tr ${moment.coverGradient}`} />
-                      )}
+                      ) : null}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent pointer-events-none" />
 
                       <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-black/45 backdrop-blur-md text-white border border-white/20 text-[11px] font-semibold tracking-wider">
@@ -308,9 +364,9 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
                       alt={moment.title}
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
-                  ) : (
+                  ) : memory?.isDemo ? (
                     <div className={`w-full h-full bg-gradient-to-tr ${moment.coverGradient}`} />
-                  )}
+                  ) : null}
                   {/* Dramatic Vignette */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/25 pointer-events-none" />
 
@@ -356,9 +412,9 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
                           alt={moment.title}
                           className="w-full h-full object-cover"
                         />
-                      ) : (
+                      ) : memory?.isDemo ? (
                         <div className={`w-full h-full bg-gradient-to-tr ${moment.coverGradient}`} />
-                      )}
+                      ) : null}
                       <span className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full bg-black/45 backdrop-blur-md text-white text-[10px] font-semibold">
                         Angle 01
                       </span>
@@ -367,13 +423,18 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
                     <div className="relative aspect-[4/3] rounded-2xl sm:rounded-3xl overflow-hidden shadow-md border border-white/80 translate-y-4 group-hover:translate-y-2 transition-transform">
                       {moment.secure_url ? (
                         <img
-                          src={getOptimizedImageUrl(moment.secure_url, { width: 600, height: 450, crop: 'fill' })}
+                          src={getOptimizedImageUrl(
+                            (memory?.mediaItems && memory.mediaItems.length > 1
+                              ? memory.mediaItems.find((i) => i.id !== moment.id)?.secure_url || moment.secure_url
+                              : moment.secure_url),
+                            { width: 600, height: 450, crop: 'fill' }
+                          )}
                           alt={moment.title}
                           className="w-full h-full object-cover"
                         />
-                      ) : (
+                      ) : memory?.isDemo ? (
                         <div className={`w-full h-full bg-gradient-to-tr from-[#69E1D4] to-[#6D5DFB]`} />
-                      )}
+                      ) : null}
                       <span className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full bg-black/45 backdrop-blur-md text-white text-[10px] font-semibold">
                         Angle 02
                       </span>
@@ -416,9 +477,9 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
                           alt={moment.title}
                           className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
                         />
-                      ) : (
+                      ) : memory?.isDemo ? (
                         <div className={`w-full h-full bg-gradient-to-tr ${moment.coverGradient}`} />
-                      )}
+                      ) : null}
                       <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                         <div className="w-14 h-14 rounded-full bg-white/30 backdrop-blur-md border border-white/60 flex items-center justify-center text-white group-hover:scale-115 transition-transform shadow-xl">
                           <Play className="w-6 h-6 fill-current ml-0.5" />
@@ -452,6 +513,7 @@ export const LivingTimelineView: React.FC<LivingTimelineViewProps> = ({
                 </div>
               )}
             </article>
+          </div>
           );
         })}
       </div>

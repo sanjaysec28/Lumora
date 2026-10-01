@@ -28,7 +28,7 @@ import {
   orderBy,
   getDocFromServer,
 } from 'firebase/firestore';
-import { MemoryCollectionItem, UploadingFileItem, TimelineMoment, ConversationTurn } from '../types';
+import { MemoryCollectionItem, UploadingFileItem, TimelineMoment, ConversationTurn, MemoryCluster } from '../types';
 
 export interface FirebaseConfig {
   apiKey: string;
@@ -360,6 +360,90 @@ export async function saveMemoryToFirestore(
       });
     }
   }
+
+  // 4. Subcollection: clusters & Top-level clusters collection
+  if (memory.clusters && memory.clusters.length > 0) {
+    for (const cluster of memory.clusters) {
+      const clusterData = {
+        id: cluster.id,
+        memoryId: memory.id,
+        ownerId,
+        title: cluster.title,
+        subtitle: cluster.subtitle || '',
+        narrativeSummary: cluster.narrativeSummary || '',
+        mediaIds: cluster.mediaIds || [],
+        momentIds: cluster.momentIds || [],
+        dominantTags: cluster.dominantTags || [],
+        dominantActivities: cluster.dominantActivities || [],
+        timeRange: cluster.timeRange || null,
+        location: cluster.location || '',
+        confidence: cluster.confidence || 'medium',
+        coverImageUrl: cluster.coverImageUrl || '',
+        createdAt: cluster.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // In memory subcollection
+      const memoryClusterDocRef = doc(db, 'memories', memory.id, 'clusters', cluster.id);
+      await setDoc(memoryClusterDocRef, clusterData);
+
+      // In top-level clusters collection
+      const topLevelClusterDocRef = doc(db, 'clusters', cluster.id);
+      await setDoc(topLevelClusterDocRef, clusterData);
+    }
+  }
+}
+
+/**
+ * Saves a single cluster directly to Firestore
+ */
+export async function saveClusterToFirestore(cluster: MemoryCluster, ownerId: string): Promise<void> {
+  const { db } = getFirebaseServices();
+  if (!db) return;
+
+  const clusterData = {
+    id: cluster.id,
+    memoryId: cluster.memoryId || '',
+    ownerId,
+    title: cluster.title,
+    subtitle: cluster.subtitle || '',
+    narrativeSummary: cluster.narrativeSummary || '',
+    mediaIds: cluster.mediaIds || [],
+    momentIds: cluster.momentIds || [],
+    dominantTags: cluster.dominantTags || [],
+    dominantActivities: cluster.dominantActivities || [],
+    timeRange: cluster.timeRange || null,
+    location: cluster.location || '',
+    confidence: cluster.confidence || 'medium',
+    coverImageUrl: cluster.coverImageUrl || '',
+    createdAt: cluster.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const topRef = doc(db, 'clusters', cluster.id);
+  await setDoc(topRef, clusterData);
+
+  if (cluster.memoryId) {
+    const memRef = doc(db, 'memories', cluster.memoryId, 'clusters', cluster.id);
+    await setDoc(memRef, clusterData);
+  }
+}
+
+/**
+ * Loads all clusters belonging to the user from Firestore
+ */
+export async function loadUserClustersFromFirestore(ownerId: string): Promise<MemoryCluster[]> {
+  const { db } = getFirebaseServices();
+  if (!db) return [];
+
+  try {
+    const q = query(collection(db, 'clusters'), where('ownerId', '==', ownerId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((d) => d.data() as MemoryCluster);
+  } catch (err) {
+    console.warn('Could not load clusters from Firestore:', err);
+    return [];
+  }
 }
 
 /**
@@ -424,6 +508,33 @@ export async function loadUserMemoriesFromFirestore(ownerId: string): Promise<Me
         };
       });
 
+      // Load subcollection: clusters
+      let clusters: MemoryCluster[] = [];
+      try {
+        const clustersSnap = await getDocs(collection(db, 'memories', memoryId, 'clusters'));
+        clusters = clustersSnap.docs.map((d) => {
+          const cData = d.data();
+          return {
+            id: cData.id,
+            ownerId: cData.ownerId,
+            memoryId: cData.memoryId,
+            title: cData.title,
+            subtitle: cData.subtitle,
+            narrativeSummary: cData.narrativeSummary,
+            mediaIds: cData.mediaIds || [],
+            momentIds: cData.momentIds || [],
+            dominantTags: cData.dominantTags || [],
+            dominantActivities: cData.dominantActivities || [],
+            timeRange: cData.timeRange,
+            location: cData.location,
+            confidence: cData.confidence || 'medium',
+            coverImageUrl: cData.coverImageUrl,
+            createdAt: cData.createdAt,
+            updatedAt: cData.updatedAt,
+          };
+        });
+      } catch (_) {}
+
       memories.push({
         id: memoryId,
         title: data.title,
@@ -439,6 +550,7 @@ export async function loadUserMemoriesFromFirestore(ownerId: string): Promise<Me
         tags: data.tags || ['Illuminated'],
         mediaItems,
         timelineMoments,
+        clusters,
         graphNodes: data.graphNodes || [],
         aiSummary: data.aiSummary,
         mood: data.mood,

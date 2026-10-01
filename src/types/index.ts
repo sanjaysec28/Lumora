@@ -64,25 +64,84 @@ export interface MemoryCollectionItem {
   coverImageUrl?: string;
   tags: string[];
   featured?: boolean;
+  isDemo?: boolean;
   mediaItems?: UploadingFileItem[];
   timelineMoments?: TimelineMoment[];
   graphNodes?: GraphNodeItem[];
   chapters?: StoryChapter[];
+  clusters?: MemoryCluster[];
   keyMomentIds?: string[];
   aiSummary?: string;
   mood?: string;
 }
 
+export interface StoryMoment {
+  id: string;
+  title: string;
+  description: string;
+  mediaIds: string[];
+  timestamp?: string;
+  importance: 'high' | 'medium';
+}
+
 export interface StoryChapter {
   id: string;
-  chapterNumber: string;
   title: string;
-  timeRange: string;
-  momentCount: number;
   description: string;
+  mediaIds: string[];
   momentIds: string[];
-  coverGradient: string;
+  order: number;
+  chapterNumber?: string;
+  timeRange?: string;
+  momentCount?: number;
+  coverGradient?: string;
   secure_url?: string;
+}
+
+export interface MemoryStoryCapsule {
+  id: string;
+  ownerId: string;
+  clusterId: string;
+  title: string;
+  subtitle?: string;
+  summary: string;
+  mediaIds: string[];
+  momentIds: string[];
+  chapters: StoryChapter[];
+  keyMoments: StoryMoment[];
+  dominantActivities: string[];
+  dominantTags: string[];
+  timeRange?: {
+    start?: string;
+    end?: string;
+  };
+  location?: string;
+  confidence: 'high' | 'medium' | 'low';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryCluster {
+  id: string;
+  ownerId: string;
+  memoryId?: string;
+  title: string;
+  subtitle?: string;
+  narrativeSummary?: string;
+  mediaIds: string[];
+  momentIds: string[];
+  dominantTags: string[];
+  dominantActivities: string[];
+  timeRange?: {
+    start?: string;
+    end?: string;
+  };
+  location?: string;
+  confidence: 'high' | 'medium' | 'low';
+  coverImageUrl?: string;
+  storyCapsule?: MemoryStoryCapsule;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TimelineMoment {

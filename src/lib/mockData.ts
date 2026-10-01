@@ -20,6 +20,7 @@ export const mockMemoryCollection: MemoryCollectionItem[] = [
     coverGradient: 'from-[#3B267E] via-[#6D5DFB] to-[#F4A7D8]',
     tags: ['Hackathon', 'AI', 'Innovation', 'Team Zyphra'],
     featured: true,
+    isDemo: true,
   },
   {
     id: 'pondicherry-trip',

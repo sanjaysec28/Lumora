@@ -390,6 +390,112 @@ Please synthesize:
 });
 
 /**
+ * POST /api/gemini/synthesize-cluster-story
+ * Generates one grounded, structured story for a specific memory cluster.
+ * Strictly 1 call per meaningful cluster (never per image).
+ */
+app.post('/api/gemini/synthesize-cluster-story', async (req: Request, res: Response) => {
+  const { cluster, insights, items, mood } = req.body;
+
+  const clusterTitle = cluster?.title || 'Memory Cluster';
+  const clusterMood = mood || 'Cinematic';
+  const insightsList = Array.isArray(insights) ? insights : [];
+  const itemsList = Array.isArray(items) ? items : [];
+
+  const fallbackClusterStory = () => {
+    const act = cluster?.dominantActivities?.[0] || 'collaboration and celebration';
+    const tagSummary = (cluster?.dominantTags || []).slice(0, 3).join(', ');
+
+    return {
+      title: clusterTitle,
+      subtitle: `${itemsList.length} moments grounded in ${act}.`,
+      narrativeSummary: `A cohesive sequence of ${itemsList.length} moments highlighting ${act}, unified by ${tagSummary || 'shared experiences'}.`,
+      keyMoments: insightsList.map((ins: any) => ins.description || ins.context || 'Captured moment').slice(0, 5),
+      dominantActivities: cluster?.dominantActivities || ['collaborative session'],
+      relevantTags: cluster?.dominantTags || ['moments', 'memory'],
+    };
+  };
+
+  if (!ai || !geminiApiKey || insightsList.length === 0) {
+    return res.json(fallbackClusterStory());
+  }
+
+  try {
+    const prompt = `Synthesize a grounded, cohesive mini-story for this specific memory cluster in Lumora:
+Cluster Candidate Title: "${clusterTitle}"
+Story Mood: "${clusterMood}"
+Number of Media Items: ${itemsList.length}
+
+Media Insights in this Cluster:
+${JSON.stringify(
+  insightsList.map((ins: any) => ({
+    scene: ins.scene,
+    activity: ins.activity,
+    objects: ins.objects,
+    momentType: ins.momentType,
+    context: ins.context,
+    description: ins.description,
+    tags: ins.tags,
+  })),
+  null,
+  2
+)}
+
+RULES:
+1. Ground the title and story strictly in the observable scenes, activities, and objects above.
+2. Do not invent names, specific dates, or external events not evident in the insights.
+3. Produce a human-readable title (e.g. "Final Presentation", "Hackathon 2026", "College Symposium", "Pondicherry Trip", "Team Work Session", "Family Celebration"). Never use "Cluster 1" or generic labels.
+4. Provide a 1-sentence subtitle and a concise 2-3 sentence narrativeSummary.
+5. Return JSON matching the schema.`;
+
+    const systemInstruction = `You are Lumora's Memory Intelligence Cluster Storyteller. You create grounded, vivid micro-stories for segmented event clusters. Never hallucinate unsupported facts.`;
+
+    const geminiResponse = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: prompt,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            subtitle: { type: Type.STRING },
+            narrativeSummary: { type: Type.STRING },
+            keyMoments: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            dominantActivities: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            relevantTags: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+          },
+          required: ['title', 'subtitle', 'narrativeSummary', 'keyMoments', 'dominantActivities', 'relevantTags'],
+        },
+      },
+    });
+
+    const parsed = JSON.parse(geminiResponse.text?.trim() || '{}');
+    return res.json({
+      title: parsed.title || clusterTitle,
+      subtitle: parsed.subtitle || `${itemsList.length} moments woven with ${clusterMood} arc.`,
+      narrativeSummary: parsed.narrativeSummary || fallbackClusterStory().narrativeSummary,
+      keyMoments: Array.isArray(parsed.keyMoments) ? parsed.keyMoments : fallbackClusterStory().keyMoments,
+      dominantActivities: Array.isArray(parsed.dominantActivities) ? parsed.dominantActivities : cluster?.dominantActivities || [],
+      relevantTags: Array.isArray(parsed.relevantTags) ? parsed.relevantTags : cluster?.dominantTags || [],
+    });
+  } catch (err) {
+    console.error('Gemini synthesize-cluster-story error, falling back:', err);
+    return res.json(fallbackClusterStory());
+  }
+});
+
+/**
  * POST /api/gemini/ask-memory
  * Answers questions about the memory with grounded visual & temporal awareness
  * Produces structured MemoryAnswer: answer, confidence, momentIds, mediaIds, followUps, relevantGraphNodes

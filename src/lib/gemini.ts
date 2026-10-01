@@ -5,10 +5,68 @@
  * Incorporates robust resilience, validation, and heuristic fallback.
  */
 
-import { UploadingFileItem, MediaInsight, GraphNodeItem, TimelineMoment, MemoryCollectionItem, MemoryAnswer } from '../types';
+import { UploadingFileItem, MediaInsight, GraphNodeItem, TimelineMoment, MemoryCollectionItem, MemoryAnswer, MemoryCluster } from '../types';
 import { executeConversationalRecall, analyzeQueryIntent, retrieveRelevantMoments, generateContextualFollowUps } from './memoryRecallEngine';
 
 export { executeConversationalRecall, analyzeQueryIntent, retrieveRelevantMoments, generateContextualFollowUps };
+
+/**
+ * Synthesizes a grounded story for a single memory cluster with Gemini.
+ * Strictly 1 call per meaningful cluster (never per image).
+ */
+export async function synthesizeClusterStory(
+  cluster: MemoryCluster,
+  clusterItems: UploadingFileItem[],
+  mood?: string
+): Promise<{
+  title: string;
+  subtitle: string;
+  narrativeSummary: string;
+  keyMoments: string[];
+  dominantActivities: string[];
+  relevantTags: string[];
+}> {
+  const insights = clusterItems
+    .map((it) => it.aiInsight)
+    .filter((ins): ins is MediaInsight => Boolean(ins));
+
+  try {
+    const res = await fetch('/api/gemini/synthesize-cluster-story', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cluster: {
+          id: cluster.id,
+          title: cluster.title,
+          dominantTags: cluster.dominantTags,
+          dominantActivities: cluster.dominantActivities,
+          location: cluster.location,
+          timeRange: cluster.timeRange,
+        },
+        insights,
+        items: clusterItems.map((i) => ({ id: i.id, filename: i.filename, type: i.type })),
+        mood: mood || 'Cinematic',
+      }),
+    });
+
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('Failed to call /api/gemini/synthesize-cluster-story, using local fallback:', err);
+  }
+
+  // Grounded local fallback
+  const act = cluster.dominantActivities?.[0] || 'collaboration and celebration';
+  return {
+    title: cluster.title,
+    subtitle: `${clusterItems.length} moments grounded in ${act}.`,
+    narrativeSummary: `A distinct memory chapter of ${clusterItems.length} connected moments highlighting ${act}, unified by ${cluster.dominantTags.slice(0, 3).join(', ') || 'shared experiences'}.`,
+    keyMoments: insights.map((ins) => ins.description || ins.context).slice(0, 5),
+    dominantActivities: cluster.dominantActivities,
+    relevantTags: cluster.dominantTags,
+  };
+}
 
 /**
  * Checks server-side Gemini intelligence availability

@@ -81,11 +81,9 @@ export function uploadToCloudinary(options: UploadOptions): Promise<CloudinaryAs
   const { file, onProgress, config = getCloudinaryConfig() } = options;
 
   return new Promise((resolve, reject) => {
-    // If Cloudinary is not configured, fallback gracefully with simulated realistic upload
+    // If Cloudinary is not configured, reject cleanly - never generate fake media in Live Mode
     if (!config.cloudName || !config.uploadPreset) {
-      simulateFallbackUpload(file, options.filename, onProgress)
-        .then(resolve)
-        .catch(reject);
+      reject(new Error('Cloudinary credentials (cloud name and unsigned upload preset) are required to upload real media.'));
       return;
     }
 
@@ -156,53 +154,6 @@ export function uploadToCloudinary(options: UploadOptions): Promise<CloudinaryAs
     };
 
     xhr.send(formData);
-  });
-}
-
-/**
- * Fallback upload simulation when no Cloudinary preset is configured,
- * ensuring testability without breaking the product flow.
- */
-function simulateFallbackUpload(
-  file: File | Blob,
-  filename?: string,
-  onProgress?: (progressPercent: number) => void
-): Promise<CloudinaryAsset> {
-  return new Promise((resolve) => {
-    let currentProgress = 0;
-    const interval = setInterval(() => {
-      currentProgress += Math.floor(Math.random() * 25) + 15;
-      if (currentProgress >= 100) {
-        clearInterval(interval);
-        if (onProgress) onProgress(100);
-
-        const isVideo =
-          file.type.startsWith('video') ||
-          (filename && /\.(mp4|mov|webm)$/i.test(filename));
-
-        // Use real working Cloudinary demo CDN assets
-        const mockSecureUrl = isVideo
-          ? 'https://res.cloudinary.com/demo/video/upload/f_auto,q_auto/dog.mp4'
-          : 'https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_1200/sample.jpg';
-
-        const asset: CloudinaryAsset = {
-          asset_id: `demo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          public_id: `lumora/demo/${filename || 'asset'}`,
-          resource_type: isVideo ? 'video' : 'image',
-          format: isVideo ? 'mp4' : 'jpg',
-          width: isVideo ? 1920 : 1200,
-          height: isVideo ? 1080 : 800,
-          duration: isVideo ? 14.5 : undefined,
-          bytes: file.size || 4800000,
-          secure_url: mockSecureUrl,
-          created_at: new Date().toISOString(),
-        };
-
-        resolve(asset);
-      } else {
-        if (onProgress) onProgress(currentProgress);
-      }
-    }, 150);
   });
 }
 

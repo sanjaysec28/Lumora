@@ -9,6 +9,8 @@ interface NavigationProps {
   onOpenLogin: () => void;
   onOpenSearch?: () => void;
   onOpenProfile?: () => void;
+  isDemoMode?: boolean;
+  onToggleDemoMode?: () => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -17,6 +19,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   onOpenLogin,
   onOpenSearch,
   onOpenProfile,
+  isDemoMode = false,
+  onToggleDemoMode,
 }) => {
   const isProductRoute = currentRoute !== '/';
 
@@ -24,17 +28,38 @@ export const Navigation: React.FC<NavigationProps> = ({
     <header className="relative z-40 w-full px-5 sm:px-10 pt-6 sm:pt-7 pb-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Zone 1: Brand Element */}
-        <button
-          onClick={() => onNavigate('/')}
-          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6D5DFB] rounded-lg transition-transform hover:opacity-95 cursor-pointer text-left"
-          aria-label="Lumora Home"
-        >
-          <LumoraLogo size="md" />
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => onNavigate('/')}
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6D5DFB] rounded-lg transition-transform hover:opacity-95 cursor-pointer text-left"
+            aria-label="Lumora Home"
+          >
+            <LumoraLogo size="md" />
+          </button>
+          {isProductRoute && (
+            <button
+              type="button"
+              onClick={onToggleDemoMode}
+              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-all cursor-pointer ${
+                isDemoMode
+                  ? 'bg-amber-500/10 text-amber-700 border border-amber-500/25 hover:bg-amber-500/20'
+                  : 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/25 hover:bg-emerald-500/20'
+              }`}
+              title={isDemoMode ? 'Click to return to Live Vault' : 'Click to explore curated Demo Mode'}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isDemoMode ? 'bg-amber-500 shadow-[0_0_6px_#F59E0B]' : 'bg-emerald-500 shadow-[0_0_6px_#10B981]'
+                }`}
+              />
+              <span>{isDemoMode ? 'Demo Mode' : 'Live Vault'}</span>
+            </button>
+          )}
+        </div>
 
         {/* Zone 2: Minimal Text Links */}
         <nav
-          className="hidden md:flex items-center gap-9 text-[14px] font-medium text-[#665F78]"
+          className="hidden md:flex items-center gap-8 text-[14px] font-medium text-[#665F78]"
           aria-label="Main Navigation"
         >
           <button
@@ -46,14 +71,19 @@ export const Navigation: React.FC<NavigationProps> = ({
             Memories
           </button>
           <button
-            onClick={() => onNavigate('/memory/demo')}
-            className={`transition-colors duration-200 hover:text-[#171522] cursor-pointer inline-flex items-center gap-2 ${
-              currentRoute === '/memory/demo' ? 'text-[#3B267E] font-semibold' : ''
+            onClick={() => {
+              if (onToggleDemoMode && !isDemoMode) {
+                onToggleDemoMode();
+              }
+              onNavigate('/memory/demo');
+            }}
+            className={`transition-colors duration-200 hover:text-[#171522] cursor-pointer inline-flex items-center gap-1.5 ${
+              currentRoute === '/memory/demo' && isDemoMode ? 'text-[#3B267E] font-semibold' : ''
             }`}
           >
-            <span>Explore</span>
-            <span className="text-[10px] tracking-wider text-[#248277] font-semibold">
-              · Demo
+            <span>Explore Demo</span>
+            <span className="text-[10px] tracking-wider text-amber-600 font-semibold px-1.5 py-0.2 bg-amber-500/10 rounded-full">
+              Curated
             </span>
           </button>
           <button

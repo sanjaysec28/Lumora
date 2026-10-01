@@ -13,6 +13,8 @@ interface LandingPageProps {
   onOpenLogin: () => void;
   onOpenSearch?: () => void;
   onOpenProfile?: () => void;
+  isDemoMode?: boolean;
+  onToggleDemoMode?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -20,6 +22,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenLogin,
   onOpenSearch,
   onOpenProfile,
+  isDemoMode = false,
+  onToggleDemoMode,
 }) => {
   return (
     <div className="relative min-h-screen bg-[#FFF9FC] overflow-x-hidden py-3 sm:py-6 lg:py-8 px-2 sm:px-4 lg:px-8 selection:bg-[#6D5DFB]/15 selection:text-[#3B267E]">
@@ -86,6 +90,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           onOpenLogin={onOpenLogin}
           onOpenSearch={onOpenSearch}
           onOpenProfile={onOpenProfile}
+          isDemoMode={isDemoMode}
+          onToggleDemoMode={onToggleDemoMode}
         />
 
         {/* 2. Hero Section with 3D Abstract Artwork */}

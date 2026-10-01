@@ -206,12 +206,16 @@ export const MemoryRecallStudioView: React.FC<MemoryRecallStudioViewProps> = ({
       {/* ================================================== */}
       <div className="max-w-4xl mx-auto space-y-10">
         {conversationHistory.map((item, index) => {
-          const mediaToDisplay = Array.from(
+          const rawIds = Array.from(
             new Set([...(item.mediaIds || []), ...(item.momentIds || [])])
           );
-          const primaryMedia = mediaToDisplay[0] ? resolveMediaItem(mediaToDisplay[0]) : null;
-          const secondaryMedia1 = mediaToDisplay[1] ? resolveMediaItem(mediaToDisplay[1]) : null;
-          const secondaryMedia2 = mediaToDisplay[2] ? resolveMediaItem(mediaToDisplay[2]) : null;
+          const resolvedMediaList = rawIds
+            .map((id) => resolveMediaItem(id))
+            .filter((m): m is MediaDetailItem => Boolean(m && m.secure_url));
+          const mediaToDisplay = resolvedMediaList;
+          const primaryMedia = resolvedMediaList[0] || null;
+          const secondaryMedia1 = resolvedMediaList[1] || null;
+          const secondaryMedia2 = resolvedMediaList[2] || null;
 
           return (
             <article
@@ -292,14 +296,12 @@ export const MemoryRecallStudioView: React.FC<MemoryRecallStudioViewProps> = ({
                           secondaryMedia1 ? 'md:col-span-7 aspect-[16/10]' : 'md:col-span-12 aspect-[16/9]'
                         }`}
                       >
-                        {primaryMedia.secure_url ? (
+                        {primaryMedia.secure_url && (
                           <img
                             src={getOptimizedImageUrl(primaryMedia.secure_url, { width: 900, height: 600, crop: 'fill' })}
                             alt={primaryMedia.title}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                           />
-                        ) : (
-                          <div className={`w-full h-full bg-gradient-to-tr ${primaryMedia.coverGradient}`} />
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
 
@@ -326,14 +328,12 @@ export const MemoryRecallStudioView: React.FC<MemoryRecallStudioViewProps> = ({
                             onClick={() => onSelectMedia(secondaryMedia1)}
                             className="group relative rounded-2xl overflow-hidden bg-black flex-1 min-h-[140px] cursor-pointer shadow-sm hover:shadow-lg transition-all"
                           >
-                            {secondaryMedia1.secure_url ? (
+                            {secondaryMedia1.secure_url && (
                               <img
                                 src={getOptimizedImageUrl(secondaryMedia1.secure_url, { width: 500, height: 320, crop: 'fill' })}
                                 alt={secondaryMedia1.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               />
-                            ) : (
-                              <div className={`w-full h-full bg-gradient-to-tr ${secondaryMedia1.coverGradient}`} />
                             )}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
 
@@ -353,14 +353,12 @@ export const MemoryRecallStudioView: React.FC<MemoryRecallStudioViewProps> = ({
                             onClick={() => onSelectMedia(secondaryMedia2)}
                             className="group relative rounded-2xl overflow-hidden bg-black flex-1 min-h-[140px] cursor-pointer shadow-sm hover:shadow-lg transition-all"
                           >
-                            {secondaryMedia2.secure_url ? (
+                            {secondaryMedia2.secure_url && (
                               <img
                                 src={getOptimizedImageUrl(secondaryMedia2.secure_url, { width: 500, height: 320, crop: 'fill' })}
                                 alt={secondaryMedia2.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               />
-                            ) : (
-                              <div className={`w-full h-full bg-gradient-to-tr ${secondaryMedia2.coverGradient}`} />
                             )}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
 

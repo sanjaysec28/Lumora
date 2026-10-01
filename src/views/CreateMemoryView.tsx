@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Route, UploadingFileItem, MemoryCollectionItem, MediaInsight } from '../types';
+import { Route, UploadingFileItem, MemoryCollectionItem, MediaInsight, MemoryCluster, TimelineMoment, GraphNodeItem } from '../types';
 import { Navigation } from '../components/Navigation';
 import { Footer } from '../components/Footer';
-import { initialCreateMediaItems } from '../lib/mockData';
 import {
   uploadToCloudinary,
   getCloudinaryConfig,
@@ -19,8 +18,10 @@ import { User } from 'firebase/auth';
 import {
   analyzeMediaAsset,
   synthesizeMemoryStory,
+  synthesizeClusterStory,
   checkGeminiStatus,
 } from '../lib/gemini';
+import { clusterMediaLocally } from '../lib/memoryClusteringEngine';
 import {
   UploadCloud,
   Sparkles,
@@ -54,6 +55,8 @@ interface CreateMemoryViewProps {
   onOpenProfile: () => void;
   onSaveNewMemory?: (memory: MemoryCollectionItem) => void;
   currentUser?: User | null;
+  isDemoMode?: boolean;
+  onToggleDemoMode?: () => void;
 }
 
 export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
@@ -63,13 +66,21 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
   onOpenProfile,
   onSaveNewMemory,
   currentUser,
+  isDemoMode = false,
+  onToggleDemoMode,
 }) => {
-  const [mediaList, setMediaList] = useState<UploadingFileItem[]>(initialCreateMediaItems);
-  const [memoryTitle, setMemoryTitle] = useState('Hackathon 2026');
+  const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+  // Cloudinary Settings modal state
+  const [cloudConfig, setCloudConfig] = useState(getCloudinaryConfig());
+  const isCloudLive = Boolean(cloudConfig.cloudName && cloudConfig.uploadPreset);
+  const isLive = isCloudLive || isFirebaseConfigured();
+
+  const [mediaList, setMediaList] = useState<UploadingFileItem[]>([]);
+  const [memoryTitle, setMemoryTitle] = useState('');
   const [selectedMood, setSelectedMood] = useState<'Cinematic' | 'Warm' | 'Energetic' | 'Minimal'>('Cinematic');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStage, setProcessStage] = useState(1);
-  const [momentsUnderstood, setMomentsUnderstood] = useState(48);
+  const [momentsUnderstood, setMomentsUnderstood] = useState(0);
   const [stageSublabel, setStageSublabel] = useState<string>('Initializing multi-modal ingestion pipeline...');
   const [geminiStatus, setGeminiStatus] = useState<{ available: boolean; model: string }>({
     available: false,
@@ -83,9 +94,7 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
     availableItems: UploadingFileItem[];
   } | null>(null);
 
-  // Cloudinary Settings modal state
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-  const [cloudConfig, setCloudConfig] = useState(getCloudinaryConfig());
   const [configFeedback, setConfigFeedback] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -100,7 +109,6 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
     0
   ) + (isProcessing ? Math.max(mediaList.length, 1) : 0);
   const isUploadingAny = mediaList.some((m) => m.status === 'uploading' || m.status === 'processing');
-  const isCloudLive = Boolean(cloudConfig.cloudName && cloudConfig.uploadPreset);
 
   // Query server-side Gemini status on mount
   useEffect(() => {
@@ -267,90 +275,137 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
     triggerUploadForItem(item.id, item.file);
   };
 
-  // Add sample media files
-  const handleAddSampleFiles = () => {
-    const samples: UploadingFileItem[] = [
-      {
-        id: `s-${Date.now()}-1`,
-        filename: 'hackathon_keynote_reel.mp4',
-        type: 'video',
-        size: '112.4 MB',
-        title: 'Stage Presentation Keynote',
-        time: '04:15 PM',
-        gradient: 'from-[#3B267E] via-[#6D5DFB] to-[#F4A7D8]',
-        progress: 100,
-        status: 'success',
-        secure_url: 'https://res.cloudinary.com/demo/video/upload/f_auto,q_auto/dog.mp4',
-        cloudinaryAsset: {
-          asset_id: `cld_sample_vid_${Date.now()}`,
-          public_id: 'lumora/samples/keynote_reel',
-          resource_type: 'video',
-          format: 'mp4',
-          width: 1920,
-          height: 1080,
-          duration: 18.5,
-          bytes: 117859840,
-          secure_url: 'https://res.cloudinary.com/demo/video/upload/f_auto,q_auto/dog.mp4',
-          created_at: new Date().toISOString(),
-        },
-      },
-      {
-        id: `s-${Date.now()}-2`,
-        filename: 'team_celebration_selfie.jpg',
-        type: 'photo',
-        size: '9.2 MB',
-        title: 'Team Award Moment',
-        time: '06:30 PM',
-        gradient: 'from-[#69E1D4] to-[#6D5DFB]',
-        progress: 100,
-        status: 'success',
-        secure_url: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
-        cloudinaryAsset: {
-          asset_id: `cld_sample_img_${Date.now()}`,
-          public_id: 'lumora/samples/team_celebration',
-          resource_type: 'image',
-          format: 'jpg',
-          width: 2400,
-          height: 1600,
-          bytes: 9646899,
-          secure_url: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
-          created_at: new Date().toISOString(),
-        },
-      },
-    ];
-    setMediaList((prev) => [...prev, ...samples]);
-  };
-
   // Build memory story from items and finalize capsule
   const finishMemoryWithItems = async (items: UploadingFileItem[]) => {
+    // In Live Mode: strictly require valid successfully uploaded items with a Cloudinary secure_url!
+    const validItems = isLive
+      ? items.filter((m) => m.status === 'success' && (m.secure_url || m.cloudinaryAsset?.secure_url))
+      : items;
+
+    if (validItems.length === 0) {
+      setIsProcessing(false);
+      return;
+    }
+
+    const ownerId = currentUser?.uid || 'user_lumora_default';
+    const memoryId = `memory-${Date.now()}`;
+
     setIsProcessing(true);
     setProcessStage(4);
-    setStageSublabel('Connecting related memories: Linking spatial, temporal, and narrative clusters...');
+    setStageSublabel('Connecting related moments...');
     setMomentsUnderstood((prev) => prev + 32);
     await new Promise((r) => setTimeout(r, 600));
 
+    // AUTOMATIC CLUSTERING ENGINE (Deterministic Local Scoring)
+    const initialClusters = clusterMediaLocally(validItems, ownerId, memoryId);
+
+    // GEMINI STORY SYNTHESIS (Strictly ONE synthesis call per meaningful cluster)
+    const enrichedClusters: MemoryCluster[] = [];
+    for (let cIdx = 0; cIdx < initialClusters.length; cIdx++) {
+      const cluster = initialClusters[cIdx];
+      const clusterItems = validItems.filter((it) => cluster.mediaIds.includes(it.id));
+      setStageSublabel(
+        `Synthesizing cluster story ${cIdx + 1} of ${initialClusters.length}: "${cluster.title}"...`
+      );
+
+      try {
+        const clusterStory = await synthesizeClusterStory(cluster, clusterItems, selectedMood);
+        enrichedClusters.push({
+          ...cluster,
+          title: clusterStory.title || cluster.title,
+          subtitle: clusterStory.subtitle || cluster.subtitle,
+          narrativeSummary: clusterStory.narrativeSummary,
+          dominantActivities: clusterStory.dominantActivities?.length ? clusterStory.dominantActivities : cluster.dominantActivities,
+          dominantTags: clusterStory.relevantTags?.length ? clusterStory.relevantTags : cluster.dominantTags,
+        });
+      } catch (err) {
+        enrichedClusters.push(cluster);
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
     setProcessStage(5);
-    setStageSublabel('Lighting up your memory: Finalizing living story capsule & interactive graph...');
+    setStageSublabel('Your memories have been organized into meaningful stories.');
     setMomentsUnderstood((prev) => prev + 48);
 
+    // Synthesize overarching memory story
     const synthesized = await synthesizeMemoryStory(
       memoryTitle,
       selectedMood,
-      items,
+      validItems,
       (msg) => setStageSublabel(msg)
     );
 
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 400));
+
+    const firstItemWithUrl = validItems.find((m) => m.secure_url || m.cloudinaryAsset?.secure_url);
+    const coverUrl = firstItemWithUrl ? (firstItemWithUrl.secure_url || firstItemWithUrl.cloudinaryAsset?.secure_url) : undefined;
+
+    // Build timeline moments linking back to real clusters and media
+    const clusterTimelineMoments: TimelineMoment[] = validItems.map((item, idx) => {
+      const parentCluster = enrichedClusters.find((c) => c.mediaIds.includes(item.id));
+      return {
+        id: item.id,
+        time: item.time || `0${idx + 1}:00 PM`,
+        title: item.title || parentCluster?.title || 'Illuminated Moment',
+        description: item.aiInsight?.description || parentCluster?.subtitle || 'Captured moment.',
+        mediaCount: 1,
+        mediaType: item.type,
+        tags: item.aiInsight?.tags || parentCluster?.dominantTags || ['moment'],
+        context: item.aiInsight?.context || `${item.filename}`,
+        coverGradient: item.gradient || 'from-[#6D5DFB] to-[#F4A7D8]',
+        secure_url: item.secure_url || item.cloudinaryAsset?.secure_url,
+        cloudinaryAsset: item.cloudinaryAsset,
+        relatedMomentIds: parentCluster ? parentCluster.momentIds.filter((id) => id !== item.id) : [],
+        scene: item.aiInsight?.scene || parentCluster?.location,
+        activity: item.aiInsight?.activity || parentCluster?.dominantActivities[0],
+        objects: item.aiInsight?.objects,
+        momentType: item.aiInsight?.momentType || (parentCluster ? parentCluster.title : 'milestone'),
+        aiInsight: item.aiInsight,
+      };
+    });
+
+    // Build graph nodes from real MemoryCluster objects
+    const clusterGraphNodes: GraphNodeItem[] = enrichedClusters.map((cluster, idx) => {
+      const angle = (idx / Math.max(1, enrichedClusters.length)) * 2 * Math.PI;
+      const x = Math.round(50 + 28 * Math.cos(angle));
+      const y = Math.round(50 + 24 * Math.sin(angle));
+      const colors = ['#6D5DFB', '#69E1D4', '#F4A7D8', '#B8A7FF', '#8DDCFF'];
+
+      const connections: string[] = [];
+      if (idx < enrichedClusters.length - 1) {
+        connections.push(enrichedClusters[idx + 1].id);
+      }
+      enrichedClusters.forEach((other, oIdx) => {
+        if (oIdx !== idx && !connections.includes(other.id)) {
+          const sharedTag = cluster.dominantTags.some((t) => other.dominantTags.includes(t));
+          if (sharedTag) connections.push(other.id);
+        }
+      });
+
+      return {
+        id: cluster.id,
+        label: cluster.title,
+        type: (idx === 0 ? 'primary' : 'secondary') as 'primary' | 'secondary',
+        category: cluster.dominantActivities[0] || 'Story Segment',
+        x,
+        y,
+        momentCount: cluster.mediaIds.length,
+        description: cluster.narrativeSummary || cluster.subtitle || `${cluster.mediaIds.length} captured moments`,
+        color: colors[idx % colors.length],
+        connections,
+      };
+    });
 
     const newMemory: MemoryCollectionItem = {
-      id: `memory-${Date.now()}`,
-      title: synthesized.title || memoryTitle || 'Illuminated Moments',
+      id: memoryId,
+      title: synthesized.title || memoryTitle || enrichedClusters[0]?.title || 'Illuminated Moments',
       subtitle: synthesized.subtitle,
-      date: 'September 24–26, 2026',
-      monthYear: 'September 2026',
-      location: 'Chennai',
-      assetCount: items.length,
-      videoCount: items.filter((m) => m.type === 'video').length,
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      monthYear: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      location: enrichedClusters[0]?.location || 'Personal Archive',
+      assetCount: validItems.length,
+      videoCount: validItems.filter((m) => m.type === 'video').length,
       category: 'Projects',
       coverGradient:
         selectedMood === 'Cinematic'
@@ -360,21 +415,22 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
           : selectedMood === 'Energetic'
           ? 'from-[#69E1D4] to-[#6D5DFB]'
           : 'from-[#B8A7FF] to-[#8DDCFF]',
-      coverImageUrl: items.find((m) => m.secure_url)?.secure_url,
+      coverImageUrl: coverUrl,
       tags: [isCloudLive ? 'Cloudinary Live' : 'Demo Sandbox', selectedMood, 'AI Story'],
-      mediaItems: items,
-      timelineMoments: synthesized.timelineMoments,
-      graphNodes: synthesized.graphNodes,
+      isDemo: false,
+      mediaItems: validItems,
+      timelineMoments: clusterTimelineMoments.length > 0 ? clusterTimelineMoments : synthesized.timelineMoments,
+      clusters: enrichedClusters,
+      graphNodes: clusterGraphNodes.length > 0 ? clusterGraphNodes : synthesized.graphNodes,
       aiSummary: synthesized.narrativeSummary,
       mood: selectedMood,
     };
 
-    // Persist memory capsule, media documents, and moments into Firestore
+    // Persist memory capsule, media documents, moments, and clusters into Firestore
     if (isFirebaseConfigured()) {
       try {
-        const ownerId = currentUser?.uid || 'user_lumora_default';
         await saveMemoryToFirestore(newMemory, ownerId);
-        console.log('[Lumora Firestore] Living memory capsule persisted to Firestore.');
+        console.log('[Lumora Firestore] Living memory capsule and clusters persisted to Firestore.');
       } catch (fsErr) {
         console.warn('[Lumora Firestore] Could not persist to Firestore:', fsErr instanceof Error ? fsErr.message : fsErr);
       }
@@ -389,11 +445,26 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
 
   // Start real multi-stage AI Understanding & Story Synthesis Pipeline
   const handleStartProcessing = async () => {
+    // In Live Mode: ensure user has uploaded real media before proceeding
+    const validItems = mediaList.filter(
+      (m) => m.status === 'success' && (m.secure_url || m.cloudinaryAsset?.secure_url)
+    );
+
+    if (validItems.length === 0) {
+      if (mediaList.length === 0) {
+        setUploadWarning('Please select and upload at least one photo or video to create your memory.');
+      } else {
+        setUploadWarning('Your media files are currently uploading or have encountered errors. Please wait for uploads to complete or retry failed items.');
+      }
+      return;
+    }
+
+    setUploadWarning(null);
     setIsProcessing(true);
     setProcessingError(null);
     setProcessStage(1);
     setStageSublabel('Media received: Ingesting media fragments into secure processing pipeline...');
-    setMomentsUnderstood(Math.max(mediaList.length * 8, 24));
+    setMomentsUnderstood(Math.max(validItems.length * 8, 24));
 
     try {
       // Stage 1: Media received
@@ -410,15 +481,15 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
 
       // Stage 3: AI understanding
       setProcessStage(3);
-      setStageSublabel('AI understanding: Reading visual scenes and detecting moments with Gemini Vision...');
+      setStageSublabel('AI is discovering connections between your memories...');
 
       const analyzedItems: UploadingFileItem[] = [];
       const failedItems: UploadingFileItem[] = [];
 
-      for (let i = 0; i < mediaList.length; i++) {
-        const item = mediaList[i];
+      for (let i = 0; i < validItems.length; i++) {
+        const item = validItems[i];
         setStageSublabel(
-          `Reading the moment for ${i + 1} of ${mediaList.length}: "${item.filename}"...`
+          `AI is discovering connections: reading "${item.filename}" (${i + 1} of ${validItems.length})...`
         );
         setMomentsUnderstood((prev) => prev + 18);
 
@@ -470,9 +541,9 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
   const stages = [
     { num: '01', title: 'Media received', sub: 'Media fragments received & validated' },
     { num: '02', title: 'Cloudinary processing', sub: 'Applying f_auto, q_auto & CDN distribution' },
-    { num: '03', title: 'AI understanding', sub: 'Gemini Vision perception reading scenes & actions' },
-    { num: '04', title: 'Connecting moments', sub: 'Connecting spatial, temporal & thematic clusters' },
-    { num: '05', title: 'Memory ready', sub: 'Living story capsule synthesized & illuminated' },
+    { num: '03', title: 'AI understanding', sub: 'AI is discovering connections between your memories...' },
+    { num: '04', title: 'Clustering', sub: 'Connecting related moments...' },
+    { num: '05', title: 'Completed', sub: 'Your memories have been organized into meaningful stories.' },
   ];
 
   // Save Cloudinary configuration
@@ -497,6 +568,8 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
           onOpenLogin={onOpenLogin}
           onOpenSearch={onOpenSearch}
           onOpenProfile={onOpenProfile}
+          isDemoMode={isDemoMode}
+          onToggleDemoMode={onToggleDemoMode}
         />
 
         {/* PROCESSING SCREEN */}
@@ -608,10 +681,10 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
               <div className="mt-8 p-5 rounded-3xl bg-amber-50 border border-amber-200 text-left max-w-md mx-auto space-y-3 animate-in fade-in duration-300">
                 <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>AI analysis couldn't complete for {processingError.failedCount} items.</span>
+                  <span>Some memories could not be processed.</span>
                 </div>
                 <p className="text-xs text-amber-800 leading-relaxed">
-                  The remaining {processingError.remainingCount} moments are illuminated and ready to be explored.
+                  {processingError.failedCount} media asset(s) could not be analyzed. The remaining {processingError.remainingCount} moment(s) are illuminated and ready.
                 </p>
                 <div className="flex items-center gap-2.5 pt-1">
                   <button
@@ -671,7 +744,7 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
                   <span className="w-2 h-2 rounded-full bg-[#69E1D4] shadow-[0_0_6px_#69E1D4]" />
                   <span className="text-[#665F78]">Cloudinary Media:</span>
                   <span className="font-semibold text-[#3B267E]">
-                    {cloudConfig.cloudName ? `Cloud "${cloudConfig.cloudName}"` : 'Demo Sandbox'}
+                    {cloudConfig.cloudName ? `Cloud "${cloudConfig.cloudName}"` : 'Live Pipeline'}
                   </span>
                   <button
                     type="button"
@@ -693,6 +766,43 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Upload Warning Banner */}
+              {uploadWarning && (
+                <div className="mt-5 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-center justify-between gap-3 max-w-lg mx-auto shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>{uploadWarning}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUploadWarning(null)}
+                    className="text-amber-700 hover:text-amber-950 p-1 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Failed Uploads Banner if any failed */}
+              {mediaList.some((m) => m.status === 'error') && (
+                <div className="mt-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-900 text-xs font-medium flex flex-col sm:flex-row items-center justify-between gap-3 max-w-lg mx-auto shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>
+                      {mediaList.filter((m) => m.status === 'error').length} item(s) failed to upload. Only successfully uploaded media will be saved to your living memory.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRetryAllFailed}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors cursor-pointer shrink-0"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Retry All</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 1. Large Drag-and-Drop Area with Abstract Memory Object */}
@@ -844,15 +954,6 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleAddSampleFiles}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white border border-[#B8A7FF]/35 text-xs font-semibold text-[#6D5DFB] hover:text-[#3B267E] transition-colors cursor-pointer shadow-2xs"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Add Sample Media</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#EDE6F7] text-xs font-semibold text-[#3B267E] hover:bg-[#B8A7FF]/30 transition-colors cursor-pointer"
                   >
@@ -881,24 +982,17 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
                   <div>
                     <h4 className="font-display font-bold text-base text-[#171522]">No media selected yet</h4>
                     <p className="text-xs text-[#665F78] mt-1 leading-relaxed">
-                      Drop photos or video clips from your camera roll or load curated sample media to test Lumora's AI understanding engine.
+                      Drop photos or video clips from your camera roll or browse your local filesystem to begin.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                     <button
                       type="button"
-                      onClick={handleAddSampleFiles}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#6D5DFB] text-white text-xs font-semibold shadow-2xs hover:bg-[#3B267E] transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Load Sample Media</span>
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#EDE6F7] text-[#3B267E] text-xs font-semibold hover:bg-[#B8A7FF]/30 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-[#6D5DFB] to-[#3B267E] text-white text-xs font-semibold shadow-md hover:shadow-lg transition-all cursor-pointer"
                     >
-                      <span>Browse Files</span>
+                      <Plus className="w-4 h-4" />
+                      <span>Select Photos & Videos</span>
                     </button>
                   </div>
                 </div>
@@ -915,18 +1009,42 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
                         <div
                           className={`relative aspect-[16/10] rounded-xl overflow-hidden mb-2.5 bg-black p-3 flex flex-col justify-between text-white shadow-inner`}
                         >
-                          {item.secure_url || item.previewUrl ? (
-                            <img
-                              src={getOptimizedImageUrl(item.secure_url || item.previewUrl || '', {
-                                width: 400,
-                                height: 250,
-                                crop: 'fill',
-                              })}
-                              alt={item.title}
-                              className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity"
-                            />
+                          {item.type === 'video' ? (
+                            item.secure_url ? (
+                              <video
+                                src={item.secure_url}
+                                className="absolute inset-0 w-full h-full object-cover"
+                                muted
+                                playsInline
+                              />
+                            ) : item.previewUrl ? (
+                              <video
+                                src={item.previewUrl}
+                                className="absolute inset-0 w-full h-full object-cover"
+                                muted
+                                playsInline
+                              />
+                            ) : (
+                              <div className="absolute inset-0 bg-[#171522] flex items-center justify-center">
+                                <Film className="w-8 h-8 text-[#8DDCFF]/40" />
+                              </div>
+                            )
                           ) : (
-                            <div className={`absolute inset-0 bg-gradient-to-tr ${item.gradient}`} />
+                            item.secure_url || item.previewUrl ? (
+                              <img
+                                src={getOptimizedImageUrl(item.secure_url || item.previewUrl || '', {
+                                  width: 400,
+                                  height: 250,
+                                  crop: 'fill',
+                                })}
+                                alt={item.title}
+                                className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity"
+                              />
+                            ) : (
+                              <div className="absolute inset-0 bg-[#171522] flex items-center justify-center">
+                                <Camera className="w-8 h-8 text-[#F4A7D8]/40" />
+                              </div>
+                            )
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 pointer-events-none" />
 

@@ -79,7 +79,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
               className="absolute inset-0 w-full h-full object-cover"
             />
           ) : (
-            <div className={`absolute inset-0 bg-gradient-to-tr ${item.coverGradient}`} />
+            <div className="absolute inset-0 bg-[#171522]" />
           )}
 
           {/* Gradient Overlays for readable text and badges */}
