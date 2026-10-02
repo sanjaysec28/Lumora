@@ -19,16 +19,16 @@ const STORAGE_KEY_UPLOAD_PRESET = 'lumora_cloudinary_upload_preset';
  * Checks environment variables first, then localStorage overrides.
  */
 export function getCloudinaryConfig(): CloudinaryConfig {
-  const envCloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '';
-  const envUploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '';
+  const envCloudName = (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '').trim().replace(/^['"]|['"]$/g, '');
+  const envUploadPreset = (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '').trim().replace(/^['"]|['"]$/g, '');
 
   let localCloudName = '';
   let localUploadPreset = '';
 
   if (typeof window !== 'undefined') {
     try {
-      localCloudName = localStorage.getItem(STORAGE_KEY_CLOUD_NAME) || '';
-      localUploadPreset = localStorage.getItem(STORAGE_KEY_UPLOAD_PRESET) || '';
+      localCloudName = (localStorage.getItem(STORAGE_KEY_CLOUD_NAME) || '').trim().replace(/^['"]|['"]$/g, '');
+      localUploadPreset = (localStorage.getItem(STORAGE_KEY_UPLOAD_PRESET) || '').trim().replace(/^['"]|['"]$/g, '');
     } catch (_) {}
   }
 
@@ -81,9 +81,16 @@ export function uploadToCloudinary(options: UploadOptions): Promise<CloudinaryAs
   const { file, onProgress, config = getCloudinaryConfig() } = options;
 
   return new Promise((resolve, reject) => {
+    const cloudName = (config.cloudName || '').trim();
+    const uploadPreset = (config.uploadPreset || '').trim();
+
     // If Cloudinary is not configured, reject cleanly - never generate fake media in Live Mode
-    if (!config.cloudName || !config.uploadPreset) {
-      reject(new Error('Cloudinary credentials (cloud name and unsigned upload preset) are required to upload real media.'));
+    if (!cloudName || !uploadPreset) {
+      reject(
+        new Error(
+          'Cloudinary is not configured. Please ensure VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET are set in your environment (e.g. Vercel Project Settings) or configured via Settings.'
+        )
+      );
       return;
     }
 
@@ -92,12 +99,14 @@ export function uploadToCloudinary(options: UploadOptions): Promise<CloudinaryAs
       (options.filename && /\.(mp4|mov|webm|avi|mkv)$/i.test(options.filename));
 
     const resourceType = isVideo ? 'video' : 'image';
-    const uploadUrl = `https://api.cloudinary.com/v1_1/${config.cloudName}/${resourceType}/upload`;
+    const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
 
     const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', config.uploadPreset);
-    formData.append('tags', 'lumora,hackathon2026');
+    formData.append('file', file, options.filename || (file as File).name || 'upload');
+    formData.append('upload_preset', uploadPreset);
+    // Note: tags are NOT appended to FormData because Cloudinary unsigned upload presets by default
+    // reject client-side tags with 'Tagging is not allowed for unsigned upload'.
+    // LUMORA maintains rich semantic tags locally and in Firestore via Gemini AI insights.
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', uploadUrl, true);
@@ -116,6 +125,12 @@ export function uploadToCloudinary(options: UploadOptions): Promise<CloudinaryAs
           const res = JSON.parse(xhr.responseText);
           if (onProgress) onProgress(100);
 
+          const rawUrl = res.secure_url || res.url || '';
+          // Ensure https protocol to prevent mixed-content blocking on Vercel HTTPS
+          const secure_url = rawUrl.startsWith('http://')
+            ? rawUrl.replace('http://', 'https://')
+            : rawUrl;
+
           const asset: CloudinaryAsset = {
             asset_id: res.asset_id || `as_${Date.now()}`,
             public_id: res.public_id,
@@ -125,7 +140,7 @@ export function uploadToCloudinary(options: UploadOptions): Promise<CloudinaryAs
             height: res.height || (isVideo ? 1080 : 800),
             duration: res.duration,
             bytes: res.bytes || file.size,
-            secure_url: res.secure_url || res.url,
+            secure_url,
             created_at: res.created_at || new Date().toISOString(),
           };
           resolve(asset);
@@ -146,7 +161,7 @@ export function uploadToCloudinary(options: UploadOptions): Promise<CloudinaryAs
     };
 
     xhr.onerror = () => {
-      reject(new Error('Network error occurred while connecting to Cloudinary.'));
+      reject(new Error('Network error occurred while connecting to Cloudinary. Check your network or Vercel CORS policy.'));
     };
 
     xhr.ontimeout = () => {
@@ -174,6 +189,19 @@ export function getOptimizedImageUrl(
   if (!url || typeof url !== 'string') return '';
   if (!url.includes('cloudinary.com')) return url;
 
+  let targetUrl = url;
+
+  // Upgrade http to https to prevent Mixed Content blocking on HTTPS production (Vercel)
+  if (targetUrl.startsWith('http://res.cloudinary.com/')) {
+    targetUrl = targetUrl.replace('http://', 'https://');
+  }
+
+  // If a video asset is being rendered as an image thumbnail, Cloudinary requires
+  // the file extension to be changed to .jpg to extract a video poster frame.
+  if (targetUrl.includes('/video/upload/') || /\.(mp4|mov|webm|avi|mkv)(\?.*)?$/i.test(targetUrl)) {
+    targetUrl = targetUrl.replace(/\.(mp4|mov|webm|avi|mkv)(\?.*)?$/i, '.jpg$2');
+  }
+
   const parts: string[] = ['f_auto', 'q_auto'];
 
   if (options?.width) {
@@ -183,7 +211,15 @@ export function getOptimizedImageUrl(
     parts.push(`h_${options.height}`);
   }
   if (options?.crop) {
-    parts.push(`c_${options.crop}`);
+    // Cloudinary 'c_fill' strictly requires both width and height, or aspectRatio!
+    // If height is missing and no aspectRatio is provided, fallback to 'c_limit' to avoid HTTP 400 Bad Request error.
+    if (options.crop === 'fill' && !options.height && !options.aspectRatio) {
+      if (options.width) {
+        parts.push('c_limit');
+      }
+    } else {
+      parts.push(`c_${options.crop}`);
+    }
   }
   if (options?.aspectRatio) {
     parts.push(`ar_${options.aspectRatio}`);
@@ -192,15 +228,15 @@ export function getOptimizedImageUrl(
   const transformString = parts.join(',');
 
   // Insert transformations right after /upload/
-  if (url.includes('/upload/')) {
+  if (targetUrl.includes('/upload/')) {
     // Avoid double transformation injection
-    if (url.includes('/upload/f_auto') || url.includes('/upload/q_auto')) {
-      return url;
+    if (targetUrl.includes('/upload/f_auto') || targetUrl.includes('/upload/q_auto')) {
+      return targetUrl;
     }
-    return url.replace('/upload/', `/upload/${transformString}/`);
+    return targetUrl.replace('/upload/', `/upload/${transformString}/`);
   }
 
-  return url;
+  return targetUrl;
 }
 
 /**
@@ -217,6 +253,11 @@ export function getOptimizedVideoUrl(
   if (!url || typeof url !== 'string') return '';
   if (!url.includes('cloudinary.com')) return url;
 
+  let targetUrl = url;
+  if (targetUrl.startsWith('http://res.cloudinary.com/')) {
+    targetUrl = targetUrl.replace('http://', 'https://');
+  }
+
   const parts: string[] = ['f_auto', `q_${options?.quality || 'auto'}`, 'vc_auto'];
 
   if (options?.width) {
@@ -225,14 +266,14 @@ export function getOptimizedVideoUrl(
 
   const transformString = parts.join(',');
 
-  if (url.includes('/upload/')) {
-    if (url.includes('/upload/f_auto') || url.includes('/upload/vc_auto')) {
-      return url;
+  if (targetUrl.includes('/upload/')) {
+    if (targetUrl.includes('/upload/f_auto') || targetUrl.includes('/upload/vc_auto')) {
+      return targetUrl;
     }
-    return url.replace('/upload/', `/upload/${transformString}/`);
+    return targetUrl.replace('/upload/', `/upload/${transformString}/`);
   }
 
-  return url;
+  return targetUrl;
 }
 
 /**
