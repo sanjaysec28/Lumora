@@ -5,7 +5,7 @@
  * Incorporates robust resilience, validation, and heuristic fallback.
  */
 
-import { UploadingFileItem, MediaInsight, GraphNodeItem, TimelineMoment, MemoryCollectionItem, MemoryAnswer, MemoryCluster } from '../types';
+import { UploadingFileItem, MediaInsight, GraphNodeItem, TimelineMoment, MemoryCollectionItem, MemoryAnswer, MemoryCluster, StoryChapter, StoryMoment, MemoryStoryCapsule } from '../types';
 import { executeConversationalRecall, analyzeQueryIntent, retrieveRelevantMoments, generateContextualFollowUps } from './memoryRecallEngine';
 
 export { executeConversationalRecall, analyzeQueryIntent, retrieveRelevantMoments, generateContextualFollowUps };
@@ -21,10 +21,13 @@ export async function synthesizeClusterStory(
 ): Promise<{
   title: string;
   subtitle: string;
-  narrativeSummary: string;
-  keyMoments: string[];
+  summary: string;
+  narrativeSummary?: string;
+  chapters: StoryChapter[];
+  keyMoments: StoryMoment[];
   dominantActivities: string[];
-  relevantTags: string[];
+  dominantTags: string[];
+  relevantTags?: string[];
 }> {
   const insights = clusterItems
     .map((it) => it.aiInsight)
@@ -44,13 +47,23 @@ export async function synthesizeClusterStory(
           timeRange: cluster.timeRange,
         },
         insights,
-        items: clusterItems.map((i) => ({ id: i.id, filename: i.filename, type: i.type })),
+        items: clusterItems.map((i) => ({
+          id: i.id,
+          filename: i.filename,
+          type: i.type,
+          time: i.time,
+        })),
         mood: mood || 'Cinematic',
       }),
     });
 
     if (res.ok) {
-      return await res.json();
+      const data = await res.json();
+      return {
+        ...data,
+        dominantTags: data.dominantTags || data.relevantTags || cluster.dominantTags || [],
+        relevantTags: data.dominantTags || data.relevantTags || cluster.dominantTags || [],
+      };
     }
   } catch (err) {
     console.warn('Failed to call /api/gemini/synthesize-cluster-story, using local fallback:', err);
@@ -58,12 +71,74 @@ export async function synthesizeClusterStory(
 
   // Grounded local fallback
   const act = cluster.dominantActivities?.[0] || 'collaboration and celebration';
+  const allItemIds = clusterItems.map((i) => i.id);
+
+  // Deterministic local chapters
+  const numChapters = Math.min(Math.max(1, Math.ceil(clusterItems.length / 3)), 4);
+  const chunkSize = Math.max(1, Math.ceil(clusterItems.length / numChapters));
+  const fallbackChapters: StoryChapter[] = [];
+
+  const defaultNames = ['Project Kickoff', 'Building Together', 'Final Preparation', 'Presentation'];
+  for (let c = 0; c < numChapters; c++) {
+    const slice = clusterItems.slice(c * chunkSize, (c + 1) * chunkSize);
+    const sliceIds = slice.map((i) => i.id);
+    if (sliceIds.length > 0) {
+      const ins = insights[c * chunkSize] || insights[0];
+      const chTitle = ins?.momentType
+        ? ins.momentType.charAt(0).toUpperCase() + ins.momentType.slice(1)
+        : defaultNames[c] || `Chapter 0${c + 1}`;
+      fallbackChapters.push({
+        id: `chapter-${cluster.id}-${c + 1}`,
+        title: chTitle,
+        description: ins?.description || `Story progression with ${sliceIds.length} captured moments.`,
+        mediaIds: sliceIds,
+        momentIds: sliceIds,
+        order: c + 1,
+      });
+    }
+  }
+
+  // Key moments with real mediaIds
+  const fallbackKeyMoments: StoryMoment[] = clusterItems.slice(0, 4).map((item, idx) => {
+    const ins = insights.find((i) => i.id === item.id) || insights[idx];
+    return {
+      id: `moment-${cluster.id}-${idx + 1}`,
+      title: ins?.activity || item.title || `Moment ${idx + 1}`,
+      description: ins?.description || ins?.context || 'Documented event milestone.',
+      mediaIds: [item.id],
+      importance: idx === 0 || idx === clusterItems.length - 1 ? 'high' : 'medium',
+      timestamp: item.time || undefined,
+    };
+  });
+
+  const sumText = `A cohesive narrative of ${clusterItems.length} moments highlighting ${act}, unified by ${cluster.dominantTags.slice(0, 3).join(', ') || 'shared experiences'}.`;
+
   return {
     title: cluster.title,
     subtitle: `${clusterItems.length} moments grounded in ${act}.`,
-    narrativeSummary: `A distinct memory chapter of ${clusterItems.length} connected moments highlighting ${act}, unified by ${cluster.dominantTags.slice(0, 3).join(', ') || 'shared experiences'}.`,
-    keyMoments: insights.map((ins) => ins.description || ins.context).slice(0, 5),
+    summary: sumText,
+    narrativeSummary: sumText,
+    chapters: fallbackChapters.length > 0 ? fallbackChapters : [
+      {
+        id: `chapter-${cluster.id}-1`,
+        title: cluster.title,
+        description: `Grounded moments captured during ${cluster.title}.`,
+        mediaIds: allItemIds,
+        momentIds: allItemIds,
+        order: 1,
+      },
+    ],
+    keyMoments: fallbackKeyMoments.length > 0 ? fallbackKeyMoments : [
+      {
+        id: `moment-${cluster.id}-1`,
+        title: cluster.title,
+        description: 'Documented visual milestone.',
+        mediaIds: allItemIds.slice(0, 1),
+        importance: 'high',
+      },
+    ],
     dominantActivities: cluster.dominantActivities,
+    dominantTags: cluster.dominantTags,
     relevantTags: cluster.dominantTags,
   };
 }

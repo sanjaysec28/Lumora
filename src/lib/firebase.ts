@@ -28,7 +28,7 @@ import {
   orderBy,
   getDocFromServer,
 } from 'firebase/firestore';
-import { MemoryCollectionItem, UploadingFileItem, TimelineMoment, ConversationTurn, MemoryCluster } from '../types';
+import { MemoryCollectionItem, UploadingFileItem, TimelineMoment, ConversationTurn, MemoryCluster, MemoryStoryCapsule } from '../types';
 
 export interface FirebaseConfig {
   apiKey: string;
@@ -364,13 +364,13 @@ export async function saveMemoryToFirestore(
   // 4. Subcollection: clusters & Top-level clusters collection
   if (memory.clusters && memory.clusters.length > 0) {
     for (const cluster of memory.clusters) {
-      const clusterData = {
+      const clusterData: any = {
         id: cluster.id,
         memoryId: memory.id,
         ownerId,
         title: cluster.title,
         subtitle: cluster.subtitle || '',
-        narrativeSummary: cluster.narrativeSummary || '',
+        narrativeSummary: cluster.narrativeSummary || cluster.storyCapsule?.summary || '',
         mediaIds: cluster.mediaIds || [],
         momentIds: cluster.momentIds || [],
         dominantTags: cluster.dominantTags || [],
@@ -379,6 +379,7 @@ export async function saveMemoryToFirestore(
         location: cluster.location || '',
         confidence: cluster.confidence || 'medium',
         coverImageUrl: cluster.coverImageUrl || '',
+        storyCapsule: cluster.storyCapsule || null,
         createdAt: cluster.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -390,8 +391,81 @@ export async function saveMemoryToFirestore(
       // In top-level clusters collection
       const topLevelClusterDocRef = doc(db, 'clusters', cluster.id);
       await setDoc(topLevelClusterDocRef, clusterData);
+
+      // Persist Story Capsule subcollection: memories/{memoryId}/clusters/{clusterId}/story/main
+      if (cluster.storyCapsule) {
+        const capsuleData = {
+          ...cluster.storyCapsule,
+          ownerId,
+          clusterId: cluster.id,
+          memoryId: memory.id,
+          updatedAt: new Date().toISOString(),
+        };
+
+        const clusterStoryRef = doc(db, 'memories', memory.id, 'clusters', cluster.id, 'story', 'main');
+        await setDoc(clusterStoryRef, capsuleData);
+
+        const topClusterStoryRef = doc(db, 'clusters', cluster.id, 'story', 'main');
+        await setDoc(topClusterStoryRef, capsuleData);
+
+        const topCapsuleRef = doc(db, 'storyCapsules', cluster.storyCapsule.id);
+        await setDoc(topCapsuleRef, capsuleData);
+      }
     }
   }
+}
+
+/**
+ * Saves a single Story Capsule directly to Firestore
+ */
+export async function saveStoryCapsuleToFirestore(
+  capsule: MemoryStoryCapsule,
+  memoryId?: string
+): Promise<void> {
+  const { db } = getFirebaseServices();
+  if (!db) return;
+
+  const capsuleData = {
+    ...capsule,
+    memoryId: memoryId || '',
+    updatedAt: new Date().toISOString(),
+  };
+
+  const topCapsuleRef = doc(db, 'storyCapsules', capsule.id);
+  await setDoc(topCapsuleRef, capsuleData);
+
+  if (capsule.clusterId) {
+    const topClusterStoryRef = doc(db, 'clusters', capsule.clusterId, 'story', 'main');
+    await setDoc(topClusterStoryRef, capsuleData);
+
+    if (memoryId) {
+      const memoryClusterStoryRef = doc(db, 'memories', memoryId, 'clusters', capsule.clusterId, 'story', 'main');
+      await setDoc(memoryClusterStoryRef, capsuleData);
+    }
+  }
+}
+
+/**
+ * Loads a Story Capsule for a cluster from Firestore
+ */
+export async function loadStoryCapsuleFromFirestore(
+  clusterId: string,
+  memoryId?: string
+): Promise<MemoryStoryCapsule | null> {
+  const { db } = getFirebaseServices();
+  if (!db) return null;
+
+  try {
+    if (memoryId) {
+      const memSnap = await getDoc(doc(db, 'memories', memoryId, 'clusters', clusterId, 'story', 'main'));
+      if (memSnap.exists()) return memSnap.data() as MemoryStoryCapsule;
+    }
+    const clusterSnap = await getDoc(doc(db, 'clusters', clusterId, 'story', 'main'));
+    if (clusterSnap.exists()) return clusterSnap.data() as MemoryStoryCapsule;
+  } catch (err) {
+    console.warn('Could not load Story Capsule from Firestore:', err);
+  }
+  return null;
 }
 
 /**
@@ -401,13 +475,13 @@ export async function saveClusterToFirestore(cluster: MemoryCluster, ownerId: st
   const { db } = getFirebaseServices();
   if (!db) return;
 
-  const clusterData = {
+  const clusterData: any = {
     id: cluster.id,
     memoryId: cluster.memoryId || '',
     ownerId,
     title: cluster.title,
     subtitle: cluster.subtitle || '',
-    narrativeSummary: cluster.narrativeSummary || '',
+    narrativeSummary: cluster.narrativeSummary || cluster.storyCapsule?.summary || '',
     mediaIds: cluster.mediaIds || [],
     momentIds: cluster.momentIds || [],
     dominantTags: cluster.dominantTags || [],
@@ -416,6 +490,7 @@ export async function saveClusterToFirestore(cluster: MemoryCluster, ownerId: st
     location: cluster.location || '',
     confidence: cluster.confidence || 'medium',
     coverImageUrl: cluster.coverImageUrl || '',
+    storyCapsule: cluster.storyCapsule || null,
     createdAt: cluster.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -426,6 +501,10 @@ export async function saveClusterToFirestore(cluster: MemoryCluster, ownerId: st
   if (cluster.memoryId) {
     const memRef = doc(db, 'memories', cluster.memoryId, 'clusters', cluster.id);
     await setDoc(memRef, clusterData);
+  }
+
+  if (cluster.storyCapsule) {
+    await saveStoryCapsuleToFirestore(cluster.storyCapsule, cluster.memoryId);
   }
 }
 
@@ -520,7 +599,7 @@ export async function loadUserMemoriesFromFirestore(ownerId: string): Promise<Me
             memoryId: cData.memoryId,
             title: cData.title,
             subtitle: cData.subtitle,
-            narrativeSummary: cData.narrativeSummary,
+            narrativeSummary: cData.narrativeSummary || cData.storyCapsule?.summary,
             mediaIds: cData.mediaIds || [],
             momentIds: cData.momentIds || [],
             dominantTags: cData.dominantTags || [],
@@ -529,11 +608,16 @@ export async function loadUserMemoriesFromFirestore(ownerId: string): Promise<Me
             location: cData.location,
             confidence: cData.confidence || 'medium',
             coverImageUrl: cData.coverImageUrl,
+            storyCapsule: cData.storyCapsule || undefined,
             createdAt: cData.createdAt,
             updatedAt: cData.updatedAt,
           };
         });
       } catch (_) {}
+
+      const storyCapsules = clusters
+        .map((c) => c.storyCapsule)
+        .filter((sc): sc is MemoryStoryCapsule => Boolean(sc));
 
       memories.push({
         id: memoryId,
@@ -551,6 +635,7 @@ export async function loadUserMemoriesFromFirestore(ownerId: string): Promise<Me
         mediaItems,
         timelineMoments,
         clusters,
+        storyCapsules,
         graphNodes: data.graphNodes || [],
         aiSummary: data.aiSummary,
         mood: data.mood,

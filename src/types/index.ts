@@ -70,6 +70,7 @@ export interface MemoryCollectionItem {
   graphNodes?: GraphNodeItem[];
   chapters?: StoryChapter[];
   clusters?: MemoryCluster[];
+  storyCapsules?: MemoryStoryCapsule[];
   keyMomentIds?: string[];
   aiSummary?: string;
   mood?: string;

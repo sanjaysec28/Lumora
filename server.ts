@@ -391,7 +391,7 @@ Please synthesize:
 
 /**
  * POST /api/gemini/synthesize-cluster-story
- * Generates one grounded, structured story for a specific memory cluster.
+ * Generates one grounded, structured Story Capsule for a specific memory cluster.
  * Strictly 1 call per meaningful cluster (never per image).
  */
 app.post('/api/gemini/synthesize-cluster-story', async (req: Request, res: Response) => {
@@ -405,14 +405,80 @@ app.post('/api/gemini/synthesize-cluster-story', async (req: Request, res: Respo
   const fallbackClusterStory = () => {
     const act = cluster?.dominantActivities?.[0] || 'collaboration and celebration';
     const tagSummary = (cluster?.dominantTags || []).slice(0, 3).join(', ');
+    const allItemIds = itemsList.map((i: any) => i.id);
+
+    // Deterministic chapter segmentation based on items count
+    const numChapters = Math.min(Math.max(1, Math.ceil(itemsList.length / 3)), 4);
+    const chunkSize = Math.max(1, Math.ceil(itemsList.length / numChapters));
+    const chapters: any[] = [];
+
+    const defaultChapterNames = [
+      'Project Kickoff',
+      'Building Together',
+      'Final Preparation',
+      'Culmination & Presentation',
+    ];
+
+    for (let c = 0; c < numChapters; c++) {
+      const slice = itemsList.slice(c * chunkSize, (c + 1) * chunkSize);
+      const sliceIds = slice.map((i: any) => i.id);
+      if (sliceIds.length > 0) {
+        const representativeInsight = insightsList[c * chunkSize] || insightsList[0];
+        const chapterTitle =
+          representativeInsight?.momentType
+            ? representativeInsight.momentType.charAt(0).toUpperCase() + representativeInsight.momentType.slice(1)
+            : defaultChapterNames[c] || `Chapter 0${c + 1}`;
+
+        chapters.push({
+          id: `chapter-${cluster?.id || 'c'}-${c + 1}`,
+          title: chapterTitle,
+          description: representativeInsight?.description || `Story progression with ${sliceIds.length} captured moments.`,
+          mediaIds: sliceIds,
+          momentIds: sliceIds,
+          order: c + 1,
+        });
+      }
+    }
+
+    // Key moments with real mediaIds
+    const keyMoments: any[] = itemsList.slice(0, 4).map((item: any, idx: number) => {
+      const ins = insightsList.find((i: any) => i.id === item.id) || insightsList[idx];
+      return {
+        id: `moment-${cluster?.id || 'c'}-${idx + 1}`,
+        title: ins?.activity || item.title || `Moment ${idx + 1}`,
+        description: ins?.description || ins?.context || 'Documented event milestone.',
+        mediaIds: [item.id],
+        importance: idx === 0 || idx === itemsList.length - 1 ? 'high' : 'medium',
+        timestamp: item.time || undefined,
+      };
+    });
 
     return {
       title: clusterTitle,
       subtitle: `${itemsList.length} moments grounded in ${act}.`,
-      narrativeSummary: `A cohesive sequence of ${itemsList.length} moments highlighting ${act}, unified by ${tagSummary || 'shared experiences'}.`,
-      keyMoments: insightsList.map((ins: any) => ins.description || ins.context || 'Captured moment').slice(0, 5),
+      summary: `A cohesive narrative of ${itemsList.length} moments highlighting ${act}, unified by ${tagSummary || 'shared experiences'}.`,
+      narrativeSummary: `A cohesive narrative of ${itemsList.length} moments highlighting ${act}, unified by ${tagSummary || 'shared experiences'}.`,
+      chapters: chapters.length > 0 ? chapters : [
+        {
+          id: `chapter-${cluster?.id || 'c'}-1`,
+          title: clusterTitle,
+          description: `Grounded moments captured during ${clusterTitle}.`,
+          mediaIds: allItemIds,
+          momentIds: allItemIds,
+          order: 1,
+        },
+      ],
+      keyMoments: keyMoments.length > 0 ? keyMoments : [
+        {
+          id: `moment-${cluster?.id || 'c'}-1`,
+          title: clusterTitle,
+          description: 'Documented visual milestone.',
+          mediaIds: allItemIds.slice(0, 1),
+          importance: 'high',
+        },
+      ],
       dominantActivities: cluster?.dominantActivities || ['collaborative session'],
-      relevantTags: cluster?.dominantTags || ['moments', 'memory'],
+      dominantTags: cluster?.dominantTags || ['moments', 'memory'],
     };
   };
 
@@ -421,34 +487,46 @@ app.post('/api/gemini/synthesize-cluster-story', async (req: Request, res: Respo
   }
 
   try {
-    const prompt = `Synthesize a grounded, cohesive mini-story for this specific memory cluster in Lumora:
+    const validMediaIds = itemsList.map((i: any) => i.id);
+
+    const prompt = `Synthesize a grounded Memory Story Capsule for this specific event cluster in Lumora:
 Cluster Candidate Title: "${clusterTitle}"
 Story Mood: "${clusterMood}"
-Number of Media Items: ${itemsList.length}
+Total Media Items: ${itemsList.length}
 
-Media Insights in this Cluster:
+Media Assets in this Cluster:
 ${JSON.stringify(
-  insightsList.map((ins: any) => ({
-    scene: ins.scene,
-    activity: ins.activity,
-    objects: ins.objects,
-    momentType: ins.momentType,
-    context: ins.context,
-    description: ins.description,
-    tags: ins.tags,
-  })),
+  itemsList.map((item: any) => {
+    const ins = insightsList.find((i: any) => i.id === item.id) || {};
+    return {
+      id: item.id,
+      filename: item.filename,
+      time: item.time,
+      type: item.type,
+      scene: ins.scene,
+      activity: ins.activity,
+      objects: ins.objects,
+      momentType: ins.momentType,
+      context: ins.context,
+      description: ins.description,
+      tags: ins.tags,
+    };
+  }),
   null,
   2
 )}
 
-RULES:
-1. Ground the title and story strictly in the observable scenes, activities, and objects above.
-2. Do not invent names, specific dates, or external events not evident in the insights.
-3. Produce a human-readable title (e.g. "Final Presentation", "Hackathon 2026", "College Symposium", "Pondicherry Trip", "Team Work Session", "Family Celebration"). Never use "Cluster 1" or generic labels.
-4. Provide a 1-sentence subtitle and a concise 2-3 sentence narrativeSummary.
-5. Return JSON matching the schema.`;
+Valid Media IDs available to assign: ${JSON.stringify(validMediaIds)}
 
-    const systemInstruction = `You are Lumora's Memory Intelligence Cluster Storyteller. You create grounded, vivid micro-stories for segmented event clusters. Never hallucinate unsupported facts.`;
+RULES:
+1. Ground the title, summary, chapters, and key moments STRICTLY in the observable scenes, activities, and objects above.
+2. Produce 2–5 logical chapters based on activity/scene/momentType progression. Every chapter must list valid mediaIds from the above items.
+3. Produce 2–5 key moments. Every key moment MUST link back to valid mediaIds from above.
+4. Do not invent names, external events, or facts not supported by the insights.
+5. Produce a human-readable title (e.g. "Final Presentation", "Hackathon 2026", "College Symposium", "Pondicherry Trip", "Team Work Session"). Never use "Cluster 1" or generic placeholders.
+6. Return JSON matching the schema.`;
+
+    const systemInstruction = `You are Lumora's Memory Intelligence Storyteller. You convert segmented photo/video clusters into structured Memory Story Capsules with chapters and key moments grounded strictly in real visual evidence.`;
 
     const geminiResponse = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
@@ -461,10 +539,39 @@ RULES:
           properties: {
             title: { type: Type.STRING },
             subtitle: { type: Type.STRING },
-            narrativeSummary: { type: Type.STRING },
+            summary: { type: Type.STRING },
+            chapters: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  mediaIds: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  order: { type: Type.NUMBER },
+                },
+                required: ['title', 'description', 'mediaIds', 'order'],
+              },
+            },
             keyMoments: {
               type: Type.ARRAY,
-              items: { type: Type.STRING },
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  mediaIds: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  importance: { type: Type.STRING },
+                  timestamp: { type: Type.STRING },
+                },
+                required: ['title', 'description', 'mediaIds', 'importance'],
+              },
             },
             dominantActivities: {
               type: Type.ARRAY,
@@ -475,19 +582,62 @@ RULES:
               items: { type: Type.STRING },
             },
           },
-          required: ['title', 'subtitle', 'narrativeSummary', 'keyMoments', 'dominantActivities', 'relevantTags'],
+          required: ['title', 'subtitle', 'summary', 'chapters', 'keyMoments', 'dominantActivities', 'relevantTags'],
         },
       },
     });
 
     const parsed = JSON.parse(geminiResponse.text?.trim() || '{}');
+    const fallback = fallbackClusterStory();
+
+    // Sanitize and validate chapters
+    const sanitizedChapters = Array.isArray(parsed.chapters) && parsed.chapters.length > 0
+      ? parsed.chapters.map((ch: any, idx: number) => {
+          // Filter to real mediaIds
+          const validIds = Array.isArray(ch.mediaIds)
+            ? ch.mediaIds.filter((id: string) => validMediaIds.includes(id))
+            : [];
+          return {
+            id: `chapter-${cluster?.id || 'c'}-${idx + 1}`,
+            title: ch.title || `Chapter 0${idx + 1}`,
+            description: ch.description || 'Grounded narrative chapter.',
+            mediaIds: validIds.length > 0 ? validIds : [validMediaIds[idx % validMediaIds.length]],
+            momentIds: validIds.length > 0 ? validIds : [validMediaIds[idx % validMediaIds.length]],
+            order: typeof ch.order === 'number' ? ch.order : idx + 1,
+          };
+        })
+      : fallback.chapters;
+
+    // Sanitize and validate key moments
+    const sanitizedKeyMoments = Array.isArray(parsed.keyMoments) && parsed.keyMoments.length > 0
+      ? parsed.keyMoments.map((km: any, idx: number) => {
+          const validIds = Array.isArray(km.mediaIds)
+            ? km.mediaIds.filter((id: string) => validMediaIds.includes(id))
+            : [];
+          return {
+            id: `moment-${cluster?.id || 'c'}-${idx + 1}`,
+            title: km.title || `Key Moment ${idx + 1}`,
+            description: km.description || 'Verified visual moment.',
+            mediaIds: validIds.length > 0 ? validIds : [validMediaIds[idx % validMediaIds.length]],
+            importance: km.importance === 'high' ? 'high' : 'medium',
+            timestamp: km.timestamp || undefined,
+          };
+        })
+      : fallback.keyMoments;
+
     return res.json({
       title: parsed.title || clusterTitle,
       subtitle: parsed.subtitle || `${itemsList.length} moments woven with ${clusterMood} arc.`,
-      narrativeSummary: parsed.narrativeSummary || fallbackClusterStory().narrativeSummary,
-      keyMoments: Array.isArray(parsed.keyMoments) ? parsed.keyMoments : fallbackClusterStory().keyMoments,
-      dominantActivities: Array.isArray(parsed.dominantActivities) ? parsed.dominantActivities : cluster?.dominantActivities || [],
-      relevantTags: Array.isArray(parsed.relevantTags) ? parsed.relevantTags : cluster?.dominantTags || [],
+      summary: parsed.summary || parsed.narrativeSummary || fallback.summary,
+      narrativeSummary: parsed.summary || parsed.narrativeSummary || fallback.summary,
+      chapters: sanitizedChapters,
+      keyMoments: sanitizedKeyMoments,
+      dominantActivities: Array.isArray(parsed.dominantActivities) && parsed.dominantActivities.length > 0
+        ? parsed.dominantActivities
+        : cluster?.dominantActivities || fallback.dominantActivities,
+      dominantTags: Array.isArray(parsed.relevantTags) && parsed.relevantTags.length > 0
+        ? parsed.relevantTags
+        : cluster?.dominantTags || fallback.dominantTags,
     });
   } catch (err) {
     console.error('Gemini synthesize-cluster-story error, falling back:', err);

@@ -15,6 +15,7 @@ import { askMemoryStory } from '../lib/gemini';
 import { LivingTimelineView } from '../components/memory/LivingTimelineView';
 import { MemoryConstellationView } from '../components/memory/MemoryConstellationView';
 import { MemoryRecallStudioView } from '../components/memory/MemoryRecallStudioView';
+import { MemoryStoryCapsuleView } from '../components/memory/MemoryStoryCapsuleView';
 import { Clock, Network, MessageSquareText, Sparkles, Layers, Plus } from 'lucide-react';
 import {
   saveConversationToFirestore,
@@ -50,7 +51,7 @@ export const MemoryDemoView: React.FC<MemoryDemoViewProps> = ({
   onOpenDemoMode,
   onExitDemoMode,
 }) => {
-  const [activeMode, setActiveMode] = useState<'timeline' | 'graph' | 'ask'>('timeline');
+  const [activeMode, setActiveMode] = useState<'story' | 'timeline' | 'graph' | 'ask'>('story');
 
   const isExplicitDemo = isDemoMode || Boolean(memory?.isDemo);
 
@@ -380,6 +381,55 @@ export const MemoryDemoView: React.FC<MemoryDemoViewProps> = ({
       }));
   }, [isExplicitDemo, memory, selectedNodeId]);
 
+  // All verified media items for Story Evidence: strictly real items in Live Mode
+  const allResolvedMediaItems: MediaDetailItem[] = useMemo(() => {
+    if (isExplicitDemo) {
+      return Object.values(mockMediaDetails);
+    }
+    const realItems = memory?.mediaItems || [];
+    const validReal = realItems.filter((i) => Boolean(i.secure_url || i.cloudinaryAsset?.secure_url));
+    if (validReal.length > 0) {
+      return validReal.map((item) => ({
+        id: item.id,
+        filename: item.filename,
+        type: item.type,
+        size: item.size || '4.0 MB',
+        title: item.title,
+        time: item.time || '04:00 PM',
+        context: item.aiInsight?.context || item.title,
+        tags: item.aiInsight?.tags || ['Cloudinary'],
+        relatedMoments: [],
+        coverGradient: item.gradient || 'from-[#6D5DFB] to-[#F4A7D8]',
+        secure_url: item.secure_url || item.cloudinaryAsset?.secure_url,
+        cloudinaryAsset: item.cloudinaryAsset,
+        scene: item.aiInsight?.scene,
+        activity: item.aiInsight?.activity,
+        objects: item.aiInsight?.objects,
+        momentType: item.aiInsight?.momentType,
+        aiInsight: item.aiInsight,
+      }));
+    }
+    return timelineMoments.map((m) => ({
+      id: m.id,
+      filename: `${m.title.toLowerCase().replace(/\s+/g, '_')}.${m.mediaType === 'video' ? 'mp4' : 'jpg'}`,
+      type: m.mediaType,
+      size: m.cloudinaryAsset ? `${(m.cloudinaryAsset.bytes / (1024 * 1024)).toFixed(1)} MB` : '4.2 MB',
+      title: m.title,
+      time: m.time,
+      context: m.context || m.description,
+      tags: m.tags,
+      relatedMoments: m.relatedMomentIds || [],
+      coverGradient: m.coverGradient,
+      secure_url: m.secure_url,
+      cloudinaryAsset: m.cloudinaryAsset,
+      scene: m.scene,
+      activity: m.activity,
+      objects: m.objects,
+      momentType: m.momentType,
+      aiInsight: m.aiInsight,
+    }));
+  }, [isExplicitDemo, memory?.mediaItems, timelineMoments]);
+
   // Execute conversational recall with Gemini
   const executeQuery = async (queryText: string) => {
     const clean = queryText.trim();
@@ -587,7 +637,7 @@ export const MemoryDemoView: React.FC<MemoryDemoViewProps> = ({
             <>
               {/* ================================================== */}
               {/* PREMIUM GLOBAL MEMORY LENS SELECTOR CONTROL */}
-              {/* LIVING TIMELINE | MEMORY GRAPH | ASK YOUR MEMORY */}
+              {/* MEMORY STORY | LIVING TIMELINE | MEMORY GRAPH | ASK YOUR MEMORY */}
               {/* ================================================== */}
               <div id="memory-modes-container" className="scroll-mt-8 mb-12 sm:mb-16">
                 <div className="flex justify-center">
@@ -595,6 +645,19 @@ export const MemoryDemoView: React.FC<MemoryDemoViewProps> = ({
                     aria-label="Memory Experience Lenses"
                     className="inline-flex p-1.5 rounded-full bg-white/90 border border-[#B8A7FF]/35 shadow-[0_8px_28px_rgba(59,38,126,0.06)] backdrop-blur-md gap-1"
                   >
+                    <button
+                      type="button"
+                      onClick={() => setActiveMode('story')}
+                      className={`inline-flex items-center gap-2.5 px-6 sm:px-8 py-3 text-xs sm:text-sm font-semibold tracking-wider uppercase rounded-full transition-all duration-300 cursor-pointer ${
+                        activeMode === 'story'
+                          ? 'bg-gradient-to-r from-[#6D5DFB] to-[#3B267E] text-white shadow-[0_6px_20px_rgba(109,93,251,0.32)] scale-[1.02]'
+                          : 'text-[#665F78] hover:text-[#171522] hover:bg-white/60'
+                      }`}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Memory Story</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => setActiveMode('timeline')}
@@ -636,6 +699,21 @@ export const MemoryDemoView: React.FC<MemoryDemoViewProps> = ({
                   </nav>
                 </div>
               </div>
+
+              {/* ================================================== */}
+              {/* LENS 0: MEMORY STORY CAPSULE */}
+              {/* ================================================== */}
+              {activeMode === 'story' && (
+                <div className="animate-in fade-in duration-300">
+                  <MemoryStoryCapsuleView
+                    memory={memory}
+                    isDemoMode={isExplicitDemo}
+                    onSelectMedia={(item) => setSelectedMediaDetail(item)}
+                    timelineMoments={timelineMoments}
+                    availableMedia={allResolvedMediaItems}
+                  />
+                </div>
+              )}
 
               {/* ================================================== */}
               {/* LENS 1: LIVING TIMELINE */}

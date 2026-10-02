@@ -482,7 +482,9 @@ export function generateStoryChapters(moments: TimelineMoment[]): StoryChapter[]
       timeRange: moment.time || 'Day Session',
       momentCount: moment.mediaCount || 1,
       description: moment.description,
+      mediaIds: [moment.id],
       momentIds: [moment.id],
+      order: idx + 1,
       coverGradient: gradients[idx % gradients.length],
       secure_url: moment.secure_url,
     };

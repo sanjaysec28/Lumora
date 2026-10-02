@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Route, UploadingFileItem, MemoryCollectionItem, MediaInsight, MemoryCluster, TimelineMoment, GraphNodeItem } from '../types';
+import { Route, UploadingFileItem, MemoryCollectionItem, MediaInsight, MemoryCluster, TimelineMoment, GraphNodeItem, MemoryStoryCapsule } from '../types';
 import { Navigation } from '../components/Navigation';
 import { Footer } from '../components/Footer';
 import {
@@ -301,22 +301,47 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
 
     // GEMINI STORY SYNTHESIS (Strictly ONE synthesis call per meaningful cluster)
     const enrichedClusters: MemoryCluster[] = [];
+    const allStoryCapsules: MemoryStoryCapsule[] = [];
+
     for (let cIdx = 0; cIdx < initialClusters.length; cIdx++) {
       const cluster = initialClusters[cIdx];
       const clusterItems = validItems.filter((it) => cluster.mediaIds.includes(it.id));
       setStageSublabel(
-        `Synthesizing cluster story ${cIdx + 1} of ${initialClusters.length}: "${cluster.title}"...`
+        `Illuminating Story Capsule ${cIdx + 1} of ${initialClusters.length}: "${cluster.title}"...`
       );
 
       try {
         const clusterStory = await synthesizeClusterStory(cluster, clusterItems, selectedMood);
+        const storyCapsule: MemoryStoryCapsule = {
+          id: `capsule-${cluster.id}`,
+          ownerId,
+          clusterId: cluster.id,
+          title: clusterStory.title || cluster.title,
+          subtitle: clusterStory.subtitle || cluster.subtitle,
+          summary: clusterStory.summary || clusterStory.narrativeSummary || '',
+          mediaIds: cluster.mediaIds,
+          momentIds: cluster.momentIds,
+          chapters: clusterStory.chapters || [],
+          keyMoments: clusterStory.keyMoments || [],
+          dominantActivities: clusterStory.dominantActivities?.length ? clusterStory.dominantActivities : cluster.dominantActivities,
+          dominantTags: clusterStory.dominantTags?.length ? clusterStory.dominantTags : (clusterStory as any).relevantTags?.length ? (clusterStory as any).relevantTags : cluster.dominantTags,
+          timeRange: cluster.timeRange,
+          location: cluster.location,
+          confidence: cluster.confidence,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        allStoryCapsules.push(storyCapsule);
+
         enrichedClusters.push({
           ...cluster,
           title: clusterStory.title || cluster.title,
           subtitle: clusterStory.subtitle || cluster.subtitle,
-          narrativeSummary: clusterStory.narrativeSummary,
+          narrativeSummary: clusterStory.summary || clusterStory.narrativeSummary,
           dominantActivities: clusterStory.dominantActivities?.length ? clusterStory.dominantActivities : cluster.dominantActivities,
-          dominantTags: clusterStory.relevantTags?.length ? clusterStory.relevantTags : cluster.dominantTags,
+          dominantTags: clusterStory.dominantTags?.length ? clusterStory.dominantTags : (clusterStory as any).relevantTags?.length ? (clusterStory as any).relevantTags : cluster.dominantTags,
+          storyCapsule,
         });
       } catch (err) {
         enrichedClusters.push(cluster);
@@ -421,6 +446,8 @@ export const CreateMemoryView: React.FC<CreateMemoryViewProps> = ({
       mediaItems: validItems,
       timelineMoments: clusterTimelineMoments.length > 0 ? clusterTimelineMoments : synthesized.timelineMoments,
       clusters: enrichedClusters,
+      storyCapsules: allStoryCapsules,
+      chapters: allStoryCapsules.flatMap((sc) => sc.chapters),
       graphNodes: clusterGraphNodes.length > 0 ? clusterGraphNodes : synthesized.graphNodes,
       aiSummary: synthesized.narrativeSummary,
       mood: selectedMood,
